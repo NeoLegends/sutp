@@ -68,12 +68,12 @@ A chunk MUST begin with a chunk header. A chunk header consists of a 16 bit numb
 
 #### Chunk Support Requirements
 
-All SUTP implementations MUST support processing chunks given in the following list:
+An SUTP implementation MUST support the following chunks:
 
 - `0x0`: [Payload Chunk](#chunk-payload)
 - `0x1`: [SACK Chunk](#chunk-sack)
 
-Because there are 2^16 possible chunk types, support for types of chunks not in the above list is optional. An implementation that does not support a chunk of a given type MUST ignore it.
+It MAY support other chunk types. An implementation that does not support a chunk of a given type MUST ignore it.
 
 #### Payload Chunk <a name="chunk-payload"></a>
 
