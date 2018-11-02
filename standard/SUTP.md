@@ -80,7 +80,7 @@ The chunk contains the raw payload data of the upper layer. The data MUST NOT be
 
 Type: `0x1`
 
-The chunk contains selective ack / nack data for reliability. There MUST be at most one selective ack chunk in each segment.
+The chunk contains selective ack (SACK) data for reliability.
 
 ##### Chunk Layout
 
@@ -88,10 +88,12 @@ The chunk contains selective ack / nack data for reliability. There MUST be at m
 
 ##### Field Explanation
 
-1. List of triples of:
+1. List of:
     1. 24 bit sequence number.
     1. 7 bit MUST be set to zeroes.
     1. 1 bit ACK (= 1) or NAK (= 0) sequence number status.
+
+The size of the list is given through the chunk size. To ensure the SACK list does not overflow the MSS, there MUST NOT be more than 255 SACK entries in a _segment_.
 
 #### Security Flag Chunk <a name="chunk-sec"></a>
 
