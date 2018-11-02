@@ -84,11 +84,10 @@ The chunk contains selective ack / nack data for reliability. There MUST be at m
 
 ##### Chunk Layout
 
-`|<8 bit> ack / nack list size|[<24 bit> seq no|<7 bit> zeroes|<1 bit> ACK / NAK]|`
+`|[<24 bit> seq no|<7 bit> zeroes|<1 bit> ACK / NAK]|`
 
 ##### Field Explanation
 
-1. The length of the following, variable length, list.
 1. List of triples of:
     1. 24 bit sequence number.
     1. 7 bit MUST be set to zeroes.
