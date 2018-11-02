@@ -16,7 +16,7 @@ This RFC uses terminology as defined in [[RFC 2119]](https://tools.ietf.org/html
 
 SUTP divides the stream into segments, that each consist of a base header and chunks. A segment is a self-describing unit of data and control instructions within SUTP. Each segment is transferred within its own UDP packet. A chunk can contain user or protocol control data.
 
-All segments MUST consist of at least one chunk. All numerical values MUST be represented in network order (i. e. big-endian).
+A segment MUST begin with the base header. It MUST contain at least one chunk. All numerical values MUST be represented in network order (i. e. big-endian).
 
 ### Example segment structure
 
