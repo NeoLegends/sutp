@@ -64,7 +64,7 @@ A segment MUST begin with the base header. It MUST contain at least one chunk. A
 
 A chunk MUST begin with a chunk header. A chunk header consists of a 16 bit number that identifies the type of the chunk and a 16 bit number that specifies the length of the payload in bytes _excluding_ length of the chunk header and _excluding_ padding. Each chunk MUST be padded to a size multiple of 4 bytes by inserting 0-3 0-bytes at the end. If not specified, chunks MAY occur multiple times in a single segment.
 
-Total layout: `|<16 bit> type of chunk|<16 bit> length of chunk payload|<length bytes> payload|<0-24 bit> padding|`
+Total layout: `|<16 bit> type of chunk|<16 bit> length of chunk payload|<length bytes> payload|<0-3 byte> padding|`
 
 #### Chunk Support Requirements
 
