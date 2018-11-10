@@ -44,21 +44,12 @@ A segment MUST begin with the base header. It MUST contain at least one chunk. A
 
 ### Base Header Layout
 
-`|<8 bit> flags|<24 bit> sq no|<32 bit> window size|`
+`|<32 bit> sq no|<32 bit> window size|`
 
 #### Field Explanation
 
-1. Control flags (from highest to lowest bit).
-    1. SYN - interpret according to the [[three-way-handshake]](#handshake).
-    1. FIN - interpret according to the [[three-way-handshake]](#handshake).
-    1. Unused - MUST be 0.
-    1. Unused - MUST be 0.
-    1. Unused - MUST be 0.
-    1. Unused - MUST be 0.
-    1. Unused - MUST be 0.
-    1. Unused - MUST be 0.
 1. Sequence number of the segment.
-1. Size of the receiving window.
+1. Size of the receiving window. The size includes the total bytes the receiver is willing to accept, including base header and chunks.
 
 ### Chunks
 
@@ -71,7 +62,10 @@ Total layout: `|<16 bit> type of chunk|<16 bit> length of chunk payload|<length 
 An SUTP implementation MUST support the following chunks:
 
 - `0x0`: [Payload Chunk](#chunk-payload)
-- `0x1`: [SACK Chunk](#chunk-sack)
+- `0x1`: [SYN Chunk](#chunk-syn)
+- `0x2`: [FIN Chunk](#chunk-fin)
+- `0x3`: [ABRT Chunk](#chunk-abrt)
+- `0x4`: [SACK Chunk](#chunk-sack)
 
 It MAY support other chunk types. An implementation that does not support a chunk of a given type MUST ignore it.
 
@@ -83,26 +77,50 @@ The chunk contains the raw payload data of the upper layer. The data MUST NOT be
 
 ##### Chunk Layout
 
-`|<length bytes> data payload|`
+`|<length bytes>data payload|`
 
-#### Selective Ack Chunk <a name="chunk-sack"></a>
+#### SYN Chunk <a name="chunk-syn"></a>
 
 Type: `0x1`
 
-The chunk contains selective ack (SACK) data for reliability.
+This chunk is present during connection set up. It always has a length of 0 and just its presence is enough.
+
+There MUST be at most one chunk of this type in any segment.
+
+#### FIN Chunk <a name="chunk-fin"></a>
+
+Type: `0x2`
+
+This chunk is present during connection tear down up. When it is present it means the sender of the chunk will close its sending channel, but is still ready to receive more data.
+
+There MUST be at most one chunk of this type in any segment.
+
+#### ABRT Chunk <a name="chunk-abrt"></a>
+
+Type: `0x3`
+
+This chunk is present when an error has occured. Sending it signals immediate connection shutdown of both sides. No further data may be sent.
+
+Upon reception, the receiver MUST NOT in turn answer with a segment containing an ABRT chunk.
+
+There MUST be at most one chunk of this type in any segment.
+
+#### Selective Ack Chunk <a name="chunk-sack"></a>
+
+Type: `0x4`
+
+The chunk contains selective ack (SACK) data for reliability. All packets up to the first sequence number in the lists are cumulatively ACK'ed.
 
 ##### Chunk Layout
 
-`|[<24 bit> seq no|<7 bit> zeroes|<1 bit> ACK / NAK]|`
+`|<16 bit> ack list len|<16 bit> nack list len|[<32 bit> ack seq no]|[<32 bit> nack seq no]|`
 
 ##### Field Explanation
 
-1. List of:
-    1. 24 bit sequence number.
-    1. 7 bit MUST be set to zeroes.
-    1. 1 bit ACK (= 1) or NAK (= 0) sequence number status.
-
-The size of the list is given through the chunk size. To ensure the SACK list does not overflow the MSS, there MUST NOT be more than 255 SACK entries in a _segment_.
+1. Length (count) of ACK list
+2. Length (count) of NAK list
+3. List of ACK'd seq nos
+4. List of NAK'd seq nos
 
 #### Security Flag Chunk <a name="chunk-sec"></a>
 
@@ -120,3 +138,22 @@ This chunk defines whether the segment contains malicious data. There MUST be at
 1. EVL bit according to [[RFC 3514]](https://tools.ietf.org/html/rfc3514).
 
 ----
+
+## Handshake
+
+Three way handshake with the following chunks:
+
+1: -> SYN Chunk + Multiple unspecified init chunks + Random Seq Nos
+2: <- SYN Chunk + SACK Chunk ACKing 1 + Multiple unspecified init chunks
+3: -> SACK Chunk ACKing 2 + Payload
+
+## Shutdown
+
+1: -> FIN Sending channel closed
+1: <- FIN + SACK Receiving channel closed
+
+## ABRT
+
+1: -> ABRT
+
+Both channels closed
