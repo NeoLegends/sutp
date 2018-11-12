@@ -2,21 +2,15 @@
 
 This document describes the Simple UDP Transport Protocol. It is very nice.
 
-----
-
 ## Introduction
 
 The SUTP defines a reliable transport protocol suitable for cases in which, for example, TCP would commonly be used. For quicker iteration on the protocol, however, SUTP is based on UDP datagrams instead of IP packets.
 
 This RFC uses terminology as defined in [[RFC 2119]](https://tools.ietf.org/html/rfc2119).
 
-----
-
 ## Data Layout
 
 The data format is specified in https://laboratory.comsys.rwth-aachen.de/sutp/data-format.
-
-----
 
 ## Handshake
 
