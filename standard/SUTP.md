@@ -96,3 +96,55 @@ Three way handshake with the following chunks:
 1: -> ABRT
 
 Both channels closed
+
+## Interfaces
+
+The following description of user commands to the SUTP are the minimum requirements to support interprocess communication.
+
+### Connect
+
+Format: CONNECT (foreign address, foreign port, options)   
+_returns_: connection name
+
+This call causes the SUTP to establish a connection to the specified connection partner using the given internet address and port number, via a 3-way Handshake. This call is of active nature as the calling process will be the connection initiator. For passive listening see [LISTEN](#interface-listen).
+**Options** MAY be omitted. Possible uses are:  
+Specifying a maximum waiting time. After not receiving any package from the connection partner for this amount of time, the connection will be forcefully closed, for security reasons.  
+Specifying which extensions should be attempted to be used while establishing the connection as the receiving end may not support the desired extensions.
+
+### Listen <a name="interface-listen"></a>
+
+Format: LISTEN (pending list length)
+
+This call wil cause the SUTP to listen for any incoming connection requests up to a maximum amount of pending connection requests depicted by _pending list length_. If a maximum is present and reached, any further incoming connection request should not be responded to.  
+
+### Accept
+
+Format: ACCEPT ()  
+_returns_: connection name
+
+This command causes pending connection requests that have been received via LISTEN, to be dequeued and turned into full connections for interprocess communications. It therefore establishes a new reliable connection to the requesting host and returns the new connection name to possibly be used in sending and receiving data.
+
+### Send
+
+Format: SEND (connection name, buffer address, data length)
+
+This call causes the data contained inside the given buffer to be send via the given connection up to _data length_.  If the connection doesn't exist, the SEND call will be considered an error.
+
+### Receive
+
+Format: RECEIVE (connection name, buffer address, buffer length)  
+_returns_: received data length
+
+This call will fill the specified buffer with received data that came from the given connection up to a maximum of _buffer length_. The caller will be informed about the amount of data received, which may be less than the size of the provided buffer. To prevent deadlocks, implementations should avoid blocking the caller if no data has been received.
+
+### Close
+
+Format: CLOSE (connection name)
+
+This command causes the specified connection to be closed. Pending data should still get send to its destination to ensure reliability and data should still get received until the other side closes the connection as well. Thus closing a connection should be understood as a one sided process. For immediate abort of a connection see [ABORT](#interface-abort).
+
+### Abort <a name="interface-abort"></a>
+
+Format: ABORT (connection name)
+
+This command causes all pending SENDs and RECEIVEs to be aborted and the specified connection to be closed forcefully. A special ABORT-chunk is to be sent to inform the other side.
