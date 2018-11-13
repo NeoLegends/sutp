@@ -21,6 +21,21 @@ Each instance of the protocol has the following properties:
 - Destination address `addr` of type `ip`
 - Source and destination port numbers `srcPort` and `dstPort` of type `number`
 
+### Abort the session <a name="action-abort-session"></a>
+
+Given:
+- The current sequence number `n`
+- Receiving window `r` of type `number`
+- Destination address `addr` of type `ip`
+- Destination port numbers`dstPort` of type `number`
+
+...aborting the session is done as follows:
+
+1. Initialize variable `ch` of type `list of chunks`
+1. Add an ABRT chunk to `ch`
+1. [`Send a segment`](#action-send-segment) using chunk list `ch`, current sequence number `n`, receiving window `r`, destination address `addr` and port `dstPort`
+1. Close receiving and sending UDP sockets
+
 ### Get a new sequence number <a name="action-incr-sequence"></a>
 
 Given:
@@ -173,3 +188,27 @@ The procedure of sending a segment again, should only be repeated while all repi
 
 All in all every segment containing more than the 'SACK Chunk' is immediately (negativeley) acknowledged.
 If negatively acknowledged or not acknowledged at all, the sender sends the segment again, therefore a reliable communication is guarenteed.
+
+## Extensions
+
+Extensions are functionality that is optional to the base functionality of SUTP. Implementations MAY choose to support any number of extensions. Extension support is purely optional and implementations with support for certain extensions MUST be backwards-compatible to implementations without extension support.
+
+### Compression
+
+An implementation of SUTP MAY support payload compression.
+
+An implementation that does support compression MUST support at least two algorithms listed in the data format specification of the `SUTP Compression Negotiation Chunk`.
+
+#### Initiating a compressed session
+
+1. Let A be the instance of SUTP that initiated the connection and let B be the initiatee of the connection.
+1. A compiles an `SUTP Compression Negotiation Chunk` with all compression algorithms A supports (in order of preference).
+1. A sends this chunk within the first (SYN ->) segment to B.
+1. Upon reception, B, if it supports compression, checks whether it supports any of the algorithms listed.
+    1. If it does support at least one algorithm, B picks _one_ algorithm from the list and also compiles an `SUTP Compression Negotiation Chunk` containing just the ID of that algorithm. Then B sends this chunk to the sender within the second (SYN <-) segment.
+    1. If B does not support any of the algorithms listed within the initial `SUTP Compression Negotiation Chunk` it MUST NOT send an `SUTP Compression Negotiation Chunk` back.
+1. Upon receiving the second segment, A checks whether the segment contains an `SUTP Compression Negotiation Chunk`.
+    1. If it does, A checks whether the chunk is valid. A chunk is valid, if: a) the chunk contains at most one ID of a compression algorithm and b) A supports this algorithm. If the chunk is invalid, a MUST [`Abort the session`](#action-abort-session).
+    1. If it does not, or if that chunk is empty (i. e. contains no compression algorithms), A skips the next step and proceeds normally without applying compression.
+1. A MUST now compress all _payload_ data using the algorithm B has picked before compiling the `Payload Chunk`.
+1. If a compression algorithm has been negotiated, B MUST decompress the payload data before handing it to the upper layer using the algorithm it has chosen during negotiation.
