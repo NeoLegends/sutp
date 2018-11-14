@@ -1,13 +1,22 @@
 # The Simple UDP Transport Protocol
 
-This document describes the Simple UDP Transport Protocol. It is very nice.
+## Abstract
+
+This document proposes the Simple UDP Transport Protocol (SUTP).  SUTP is a reliable transport protocol tunneled over UDP that provides the following:
+
+- Acknowledged, error-free, non-duplicated and in-order transfer of payload data
+- Data fragmentation to conform to path MTU limits
+- Future-proof wire format
 
 
 ## Introduction
 
 The SUTP defines a reliable transport protocol suitable for cases in which, for example, TCP would commonly be used.  For quicker iteration on the protocol, however, SUTP is based on UDP datagrams instead of IP packets.
 
-This RFC uses terminology as defined in [[RFC 2119]](https://tools.ietf.org/html/rfc2119).
+
+## Requirements Language
+
+This RFC uses terminology as defined in [RFC 2119](https://tools.ietf.org/html/rfc2119).
 
 
 ## Interfaces
@@ -19,24 +28,24 @@ The following description of user commands to the SUTP are the minimum requireme
 Format: CONNECT (foreign address, foreign port, options)
 _returns_: connection name
 
-This call causes the SUTP to establish a connection to the specified connection partner using the given internet address and port number, via a 3-way Handshake. This call is of active nature as the calling process will be the connection initiator. For passive listening see [LISTEN](#interface-listen). `options` MAY be omitted.
+This call causes the SUTP to establish a connection to the specified connection partner using the given internet address and port number, via a 3-way Handshake.  This call is of active nature as the calling process will be the connection initiator.  For passive listening see [LISTEN](#interface-listen).  `options` MAY be omitted.
 
 Possible uses are:
-- Specifying a maximum waiting time. After not receiving any package from the connection partner for this amount of time, the connection will be forcefully closed, for security reasons.
+- Specifying a maximum waiting time.  After not receiving any package from the connection partner for this amount of time, the connection will be forcefully closed, for security reasons.
 - Specifying which extensions should be attempted to be used while establishing the connection as the receiving end may not support the desired extensions.
 
 ### Listen <a name="interface-listen"></a>
 
 Format: LISTEN (pending list length)
 
-This call wil cause the SUTP to listen for any incoming connection requests up to a maximum amount of pending connection requests depicted by _pending list length_. If a maximum is present and reached, any further incoming connection request should not be responded to.
+This call wil cause the SUTP to listen for any incoming connection requests up to a maximum amount of pending connection requests depicted by _pending list length_.  If a maximum is present and reached, any further incoming connection request should not be responded to.
 
 ### Accept
 
 Format: ACCEPT ()
 _returns_: connection name
 
-This command causes pending connection requests that have been received via LISTEN, to be dequeued and turned into full connections for interprocess communications. It therefore establishes a new reliable connection to the requesting host and returns the new connection name to possibly be used in sending and receiving data.
+This command causes pending connection requests that have been received via LISTEN, to be dequeued and turned into full connections for interprocess communications.  It therefore establishes a new reliable connection to the requesting host and returns the new connection name to possibly be used in sending and receiving data.
 
 ### Send
 
@@ -49,27 +58,27 @@ This call causes the data contained inside the given buffer to be send via the g
 Format: RECEIVE (connection name, buffer address, buffer length)
 _returns_: received data length
 
-This call will fill the specified buffer with received data that came from the given connection up to a maximum of _buffer length_. The caller will be informed about the amount of data received, which may be less than the size of the provided buffer. To prevent deadlocks, implementations should avoid blocking the caller if no data has been received.
+This call will fill the specified buffer with received data that came from the given connection up to a maximum of _buffer length_.  The caller will be informed about the amount of data received, which may be less than the size of the provided buffer.  To prevent deadlocks, implementations should avoid blocking the caller if no data has been received.
 
 ### Close
 
 Format: CLOSE (connection name)
 
-This command causes the specified connection to be closed. Pending data should still get send to its destination to ensure reliability and data should still get received until the other side closes the connection as well. Thus closing a connection should be understood as a one sided process. For immediate abort of a connection see [ABORT](#interface-abort).
+This command causes the specified connection to be closed.  Pending data should still get send to its destination to ensure reliability and data should still get received until the other side closes the connection as well.  Thus closing a connection should be understood as a one sided process.  For immediate abort of a connection see [ABORT](#interface-abort).
 
 ### Abort <a name="interface-abort"></a>
 
 Format: ABORT (connection name)
 
-This command causes all pending SENDs and RECEIVEs to be aborted and the specified connection to be closed forcefully. A special ABORT-chunk is to be sent to inform the other side.
+This command causes all pending SENDs and RECEIVEs to be aborted and the specified connection to be closed forcefully.  A special ABORT-chunk is to be sent to inform the other side.
 
 ## Reliability
 
-Reliability in SUTP is accomplished by using 'SACK Chunk' and timeouts. At the begining of a new connection a sending timeout and maximum waiting time are defined. The sending timeout determines how long a sending SUTP waits for an ACK for a segment after it was sent, before sending it again. The maximum waiting time determines how long a sending SUTP waits for an ACK for a segment after it was sent before the connection will be aborted. It ultimately determines how often a certain segment can be sent again. A SUTP instance is both sending and receiving SUTP at the same time.
+Reliability in SUTP is accomplished by using 'SACK Chunk' and timeouts.  At the begining of a new connection a sending timeout and maximum waiting time are defined.  The sending timeout determines how long a sending SUTP waits for an ACK for a segment after it was sent, before sending it again.  The maximum waiting time determines how long a sending SUTP waits for an ACK for a segment after it was sent before the connection will be aborted.  It ultimately determines how often a certain segment can be sent again.  A SUTP instance is both sending and receiving SUTP at the same time.
 
 ### Receiving SUTP
 
-Sequence numbers of segments that contain only the 'SACK Chunk' are always tagged with an ACK but they are not be acknowledged by the receiving SUTP sending an additional ACK (to avoid ACK loops). For other kind of segments the receiving SUTP acts as follows. When a receiving SUTP receives a segment with a correct checksum, the sequence number is tagged with an ACK. When it receives one with an incorrect checksum the sequence number is tagged with a NAK. Then the receiving SUTP checks what the last sequence number is, to which all preceding sequence numbers are tagged with an ACK. This sequence number is the first one to be written in the 'SACK Chunk'-ACK list (cumulative ACK) the rest is added to the 'SACK Chunk' ACK or NAK list according to their tag. After that the chunk may be added to a segment, if it is going to be sent immediately, or otherwise to a new segment and is sent to the sending SUTP.
+Sequence numbers of segments that contain only the 'SACK Chunk' are always tagged with an ACK but they are not be acknowledged by the receiving SUTP sending an additional ACK (to avoid ACK loops).  For other kind of segments the receiving SUTP acts as follows.  When a receiving SUTP receives a segment with a correct checksum, the sequence number is tagged with an ACK.  When it receives one with an incorrect checksum the sequence number is tagged with a NAK.  Then the receiving SUTP checks what the last sequence number is, to which all preceding sequence numbers are tagged with an ACK.  This sequence number is the first one to be written in the 'SACK Chunk'-ACK list (cumulative ACK) the rest is added to the 'SACK Chunk' ACK or NAK list according to their tag.  After that the chunk may be added to a segment, if it is going to be sent immediately, or otherwise to a new segment and is sent to the sending SUTP.
 
 This procedure of acknowledging on the receiving SUTP guarentees that every received segment, that contains more than just the SUTP header and the 'SACK Chunk' will be directly acknowledged or negatively acknowledged depending on it's checksum.
 
@@ -77,9 +86,9 @@ This procedure of acknowledging on the receiving SUTP guarentees that every rece
 
 The sending SUTP must have a segment ready to be sent again until it received an ACK for it's sequence number (meanwhile more segments can be sent) or the connection is forcibly closed.
 
-When the sending SUTP sends a segment, a timer for this specific segment is set. If the sending SUTP receives an ACK for the segment (may be covered by the cumulative ACK) before timout the timer will be ignored. The same applies to the case of receiving a NAK but in that case the sending SUTP must send the segment with the specific sequence number again. If a timeout occurs the sending SUTP must send the segment with the specific sequence number again. The procedure of sending a segment again, should only be repeated while all repitions together do not take longer than the maximum waiting time. If that is the case the connection must be aborted.
+When the sending SUTP sends a segment, a timer for this specific segment is set.  If the sending SUTP receives an ACK for the segment (may be covered by the cumulative ACK) before timout the timer will be ignored.  The same applies to the case of receiving a NAK but in that case the sending SUTP must send the segment with the specific sequence number again.  If a timeout occurs the sending SUTP must send the segment with the specific sequence number again.  The procedure of sending a segment again, should only be repeated while all repitions together do not take longer than the maximum waiting time.  If that is the case the connection must be aborted.
 
-All in all every segment containing more than the 'SACK Chunk' is immediately (negativeley) acknowledged. If negatively acknowledged or not acknowledged at all, the sender sends the segment again, therefore a reliable communication is guarenteed.
+All in all every segment containing more than the 'SACK Chunk' is immediately (negativeley) acknowledged.  If negatively acknowledged or not acknowledged at all, the sender sends the segment again, therefore a reliable communication is guarenteed.
 
 
 ## Data Layout
@@ -192,7 +201,7 @@ Both channels closed
 
 ## Extensions
 
-Extensions are functionality that is optional to the base functionality of SUTP. Implementations MAY choose to support any number of extensions. Extension support is purely optional and implementations with support for certain extensions MUST be backwards-compatible to implementations without extension support.
+Extensions are functionality that is optional to the base functionality of SUTP.  Implementations MAY choose to support any number of extensions.  Extension support is purely optional and implementations with support for certain extensions MUST be backwards-compatible to implementations without extension support.
 
 ### Compression
 
@@ -206,10 +215,17 @@ An implementation that does support compression MUST support at least two algori
 1. A compiles an `SUTP Compression Negotiation Chunk` with all compression algorithms A supports (in order of preference).
 1. A sends this chunk within the first (SYN ->) segment to B.
 1. Upon reception, B, if it supports compression, checks whether it supports any of the algorithms listed.
-    1. If it does support at least one algorithm, B picks _one_ algorithm from the list and also compiles an `SUTP Compression Negotiation Chunk` containing just the ID of that algorithm. Then B sends this chunk to the sender within the second (SYN <-) segment.
+    1. If it does support at least one algorithm, B picks _one_ algorithm from the list and also compiles an `SUTP Compression Negotiation Chunk` containing just the ID of that algorithm.  Then B sends this chunk to the sender within the second (SYN <-) segment.
     1. If B does not support any of the algorithms listed within the initial `SUTP Compression Negotiation Chunk` it MUST NOT send an `SUTP Compression Negotiation Chunk` back.
 1. Upon receiving the second segment, A checks whether the segment contains an `SUTP Compression Negotiation Chunk`.
-    1. If it does, A checks whether the chunk is valid. A chunk is valid, if: a) the chunk contains at most one ID of a compression algorithm and b) A supports this algorithm. If the chunk is invalid, a MUST [`Abort the session`](#action-abort-session).
+    1. If it does, A checks whether the chunk is valid.  A chunk is valid, if: a) the chunk contains at most one ID of a compression algorithm and b) A supports this algorithm.  If the chunk is invalid, a MUST [`Abort the session`](#action-abort-session).
     1. If it does not, or if that chunk is empty (i. e. contains no compression algorithms), A skips the next step and proceeds normally without applying compression.
 1. A MUST now compress all _payload_ data using the algorithm B has picked before compiling the `Payload Chunk`.
 1. If a compression algorithm has been negotiated, B MUST decompress the payload data before handing it to the upper layer using the algorithm it has chosen during negotiation.
+
+
+## Authors' Addresses
+
+- Constantin Buschhaus <constantin.buschhaus@rwth-aachen.de>
+- Marvin Hohn <marvin.hohn@rwth-aachen.de>
+- Moritz Gunz <moritz.gunz@rwth-aachen.de>
