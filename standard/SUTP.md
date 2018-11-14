@@ -232,7 +232,8 @@ An implementation that does support compression MUST support at least two algori
 
 #### Initiating a compressed session
 
-1. Let A be the instance of SUTP that initiated the connection and let B be the initiatee of the connection.
+Let A be the initiator of the session and B the initiatee.
+
 1. A compiles an `SUTP Compression Negotiation Chunk` with all compression algorithms A supports (in order of preference).
 1. A sends this chunk within the first (SYN ->) segment to B.
 1. Upon reception, B, if it supports compression, checks whether it supports any of the algorithms listed.
