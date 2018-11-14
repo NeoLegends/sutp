@@ -191,13 +191,13 @@ Given destination address `addrB` and port number `pB` of B, initiating a new SU
 
 ## Shutdown
 
-1: -> FIN Sending channel closed
-1: <- FIN + SACK Receiving channel closed
+1. -> FIN Sending channel closed
+1. <- FIN + SACK Receiving channel closed
 
 
 ## ABRT
 
-1: -> ABRT
+1. -> ABRT
 
 Both channels closed
 
