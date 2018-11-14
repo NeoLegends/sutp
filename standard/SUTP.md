@@ -112,7 +112,7 @@ Given:
 ...getting a new sequence number is done as follows:
 
 1. Initialize variable `x` of type `number`
-1. Let `x` be `n + 1`
+1. Let `x` be `(n + 1) % 2^32`
 1. Set the current sequence number to `x`
 1. Return `x`
 
