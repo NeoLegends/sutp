@@ -161,13 +161,31 @@ Given:
 1. Send a UDP datagram to address `addr` and port `dstPort` containing `buf`
 
 
-## Handshake
+## Session initiation
 
-Three way handshake with the following chunks:
+Let A be the initiator of the session and B the initiatee.
 
-1: -> SYN Chunk + Multiple unspecified init chunks + Random Seq Nos
-2: <- SYN Chunk + SACK Chunk ACKing 1 + Multiple unspecified init chunks
-3: -> SACK Chunk ACKing 2 + Payload
+Given destination address `addrB` and port number `pB` of B, initiating a new SUTP connection between A and B is done as follows:
+
+1. A chooses a random sequence number `sA`, a receiving window size `rA` and initializes variable `sB` (sequence number of B) to be of type `number`
+1. A opens a UDP listener on a random port number `pA`. If this fails A MUST stop initializing the connection and immediately report the error to the upper layer.
+1. A compiles a new list of chunks `ch1` containing at least the `SYN Chunk` and optionally initialization chunks as required by protocol extensions
+1. Set a timeout `tInit` covering the total connection initiation
+    - If `tInit` elapses before the connection can be initiated, A MUST stop initializing the connection and immediately report the error to the upper layer
+1. Let A [`Send a segment`](#action-send-segment) (in the following called `s1`) using chunk list `ch1`, `addrB`, `pA`, `pB`, `sA` and `rA`
+1. Set a timeout for B's answer `tB`
+    - If B does not respond within the timeout, A MUST stop initializing the connection and immediately report the error to the upper layer
+    - Otherwise continue normally
+1. A parses the received data into an SUTP segment `s2`
+1. Ensure `s2` contains a `SYN Chunk` and a `SACK Chunk` `chSack`
+    - If not, A MUST [`Abort the session`](#action-abort-session) and report the error to the upper layer
+    - Otherwise continue normally
+1. Ensure `chSack` ACKs `s1`
+    - If it does not, go to step 5
+    - Otherwise continue normally
+1. Let `sB` be `s2`'s sequence number
+1. If present, initialize any protocol extensions
+1. The connection is now initialized
 
 
 ## Shutdown
