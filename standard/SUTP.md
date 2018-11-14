@@ -8,6 +8,83 @@ The SUTP defines a reliable transport protocol suitable for cases in which, for 
 
 This RFC uses terminology as defined in [[RFC 2119]](https://tools.ietf.org/html/rfc2119).
 
+## Interfaces
+
+The following description of user commands to the SUTP are the minimum requirements to support interprocess communication.
+
+### Connect
+
+Format: CONNECT (foreign address, foreign port, options)
+_returns_: connection name
+
+This call causes the SUTP to establish a connection to the specified connection partner using the given internet address and port number, via a 3-way Handshake. This call is of active nature as the calling process will be the connection initiator. For passive listening see [LISTEN](#interface-listen).
+**Options** MAY be omitted. Possible uses are:
+Specifying a maximum waiting time. After not receiving any package from the connection partner for this amount of time, the connection will be forcefully closed, for security reasons.
+Specifying which extensions should be attempted to be used while establishing the connection as the receiving end may not support the desired extensions.
+
+### Listen <a name="interface-listen"></a>
+
+Format: LISTEN (pending list length)
+
+This call wil cause the SUTP to listen for any incoming connection requests up to a maximum amount of pending connection requests depicted by _pending list length_. If a maximum is present and reached, any further incoming connection request should not be responded to.
+
+### Accept
+
+Format: ACCEPT ()
+_returns_: connection name
+
+This command causes pending connection requests that have been received via LISTEN, to be dequeued and turned into full connections for interprocess communications. It therefore establishes a new reliable connection to the requesting host and returns the new connection name to possibly be used in sending and receiving data.
+
+### Send
+
+Format: SEND (connection name, buffer address, data length)
+
+This call causes the data contained inside the given buffer to be send via the given connection up to _data length_.  If the connection doesn't exist, the SEND call will be considered an error.
+
+### Receive
+
+Format: RECEIVE (connection name, buffer address, buffer length)
+_returns_: received data length
+
+This call will fill the specified buffer with received data that came from the given connection up to a maximum of _buffer length_. The caller will be informed about the amount of data received, which may be less than the size of the provided buffer. To prevent deadlocks, implementations should avoid blocking the caller if no data has been received.
+
+### Close
+
+Format: CLOSE (connection name)
+
+This command causes the specified connection to be closed. Pending data should still get send to its destination to ensure reliability and data should still get received until the other side closes the connection as well. Thus closing a connection should be understood as a one sided process. For immediate abort of a connection see [ABORT](#interface-abort).
+
+### Abort <a name="interface-abort"></a>
+
+Format: ABORT (connection name)
+
+This command causes all pending SENDs and RECEIVEs to be aborted and the specified connection to be closed forcefully. A special ABORT-chunk is to be sent to inform the other side.
+
+## Reliability
+
+Reliability in SUTP is accomplished by using 'SACK Chunk' and timeouts. At the begining of a new connection a sending timeout and maximum waiting time are defined.
+The sending timeout determines how long a sending SUTP waits for an ACK for a segment after it was sent, before sending it again. The maximum waiting time determines how long a sending SUTP waits for an ACK for a segment after it was sent before the connection will be aborted. It ultimately determines how often a certain segment can be sent again.
+A SUTP instance is both sending and receiving SUTP at the same time.
+
+### Receiving SUTP
+
+Sequence numbers of segments that contain only the 'SACK Chunk' are always tagged with an ACK but they are not be acknowledged by the receiving SUTP sending an additional ACK (to avoid ACK loops). For other kind of segments the receiving SUTP acts as follows.
+When a receiving SUTP receives a segment with a correct checksum, the sequence number is tagged with an ACK. When it receives one with an incorrect checksum the sequence number is tagged with a NAK. Then the receiving SUTP checks what the last sequence number is, to which all preceding sequence numbers are tagged with an ACK. This sequence number is the first one to be written in the 'SACK Chunk'-ACK list (cumulative ACK) the rest is added to the 'SACK Chunk' ACK or NAK list according to their tag.
+After that the chunk may be added to a segment, if it is going to be sent immediately, or otherwise to a new segment and is sent to the sending SUTP.
+
+This procedure of acknowledging on the receiving SUTP guarentees that every received segment, that contains more than just the SUTP header and the 'SACK Chunk' will be directly acknowledged or negatively acknowledged depending on it's checksum.
+
+### Sending SUTP
+
+The sending SUTP must have a segment ready to be sent again until it received an ACK for it's sequence number (meanwhile more segments can be sent) or the connection is forcibly closed.
+
+When the sending SUTP sends a segment, a timer for this specific segment is set. If the sending SUTP receives an ACK for the segment (may be covered by the cumulative ACK) before timout the timer will be ignored. The same applies to the case of receiving a NAK but in that case the sending SUTP must send the segment with the specific sequence number again.
+If a timeout occurs the sending SUTP must send the segment with the specific sequence number again.
+The procedure of sending a segment again, should only be repeated while all repitions together do not take longer than the maximum waiting time. If that is the case the connection must be aborted.
+
+All in all every segment containing more than the 'SACK Chunk' is immediately (negativeley) acknowledged.
+If negatively acknowledged or not acknowledged at all, the sender sends the segment again, therefore a reliable communication is guarenteed.
+
 ## Data Layout
 
 The data format is specified in https://laboratory.comsys.rwth-aachen.de/sutp/data-format.
@@ -111,83 +188,6 @@ Three way handshake with the following chunks:
 1: -> ABRT
 
 Both channels closed
-
-## Interfaces
-
-The following description of user commands to the SUTP are the minimum requirements to support interprocess communication.
-
-### Connect
-
-Format: CONNECT (foreign address, foreign port, options)
-_returns_: connection name
-
-This call causes the SUTP to establish a connection to the specified connection partner using the given internet address and port number, via a 3-way Handshake. This call is of active nature as the calling process will be the connection initiator. For passive listening see [LISTEN](#interface-listen).
-**Options** MAY be omitted. Possible uses are:
-Specifying a maximum waiting time. After not receiving any package from the connection partner for this amount of time, the connection will be forcefully closed, for security reasons.
-Specifying which extensions should be attempted to be used while establishing the connection as the receiving end may not support the desired extensions.
-
-### Listen <a name="interface-listen"></a>
-
-Format: LISTEN (pending list length)
-
-This call wil cause the SUTP to listen for any incoming connection requests up to a maximum amount of pending connection requests depicted by _pending list length_. If a maximum is present and reached, any further incoming connection request should not be responded to.
-
-### Accept
-
-Format: ACCEPT ()
-_returns_: connection name
-
-This command causes pending connection requests that have been received via LISTEN, to be dequeued and turned into full connections for interprocess communications. It therefore establishes a new reliable connection to the requesting host and returns the new connection name to possibly be used in sending and receiving data.
-
-### Send
-
-Format: SEND (connection name, buffer address, data length)
-
-This call causes the data contained inside the given buffer to be send via the given connection up to _data length_.  If the connection doesn't exist, the SEND call will be considered an error.
-
-### Receive
-
-Format: RECEIVE (connection name, buffer address, buffer length)
-_returns_: received data length
-
-This call will fill the specified buffer with received data that came from the given connection up to a maximum of _buffer length_. The caller will be informed about the amount of data received, which may be less than the size of the provided buffer. To prevent deadlocks, implementations should avoid blocking the caller if no data has been received.
-
-### Close
-
-Format: CLOSE (connection name)
-
-This command causes the specified connection to be closed. Pending data should still get send to its destination to ensure reliability and data should still get received until the other side closes the connection as well. Thus closing a connection should be understood as a one sided process. For immediate abort of a connection see [ABORT](#interface-abort).
-
-### Abort <a name="interface-abort"></a>
-
-Format: ABORT (connection name)
-
-This command causes all pending SENDs and RECEIVEs to be aborted and the specified connection to be closed forcefully. A special ABORT-chunk is to be sent to inform the other side.
-
-## Reliability
-
-Reliability in SUTP is accomplished by using 'SACK Chunk' and timeouts. At the begining of a new connection a sending timeout and maximum waiting time are defined.
-The sending timeout determines how long a sending SUTP waits for an ACK for a segment after it was sent, before sending it again. The maximum waiting time determines how long a sending SUTP waits for an ACK for a segment after it was sent before the connection will be aborted. It ultimately determines how often a certain segment can be sent again.
-A SUTP instance is both sending and receiving SUTP at the same time.
-
-### Receiving SUTP
-
-Sequence numbers of segments that contain only the 'SACK Chunk' are always tagged with an ACK but they are not be acknowledged by the receiving SUTP sending an additional ACK (to avoid ACK loops). For other kind of segments the receiving SUTP acts as follows.
-When a receiving SUTP receives a segment with a correct checksum, the sequence number is tagged with an ACK. When it receives one with an incorrect checksum the sequence number is tagged with a NAK. Then the receiving SUTP checks what the last sequence number is, to which all preceding sequence numbers are tagged with an ACK. This sequence number is the first one to be written in the 'SACK Chunk'-ACK list (cumulative ACK) the rest is added to the 'SACK Chunk' ACK or NAK list according to their tag.
-After that the chunk may be added to a segment, if it is going to be sent immediately, or otherwise to a new segment and is sent to the sending SUTP.
-
-This procedure of acknowledging on the receiving SUTP guarentees that every received segment, that contains more than just the SUTP header and the 'SACK Chunk' will be directly acknowledged or negatively acknowledged depending on it's checksum.
-
-### Sending SUTP
-
-The sending SUTP must have a segment ready to be sent again until it received an ACK for it's sequence number (meanwhile more segments can be sent) or the connection is forcibly closed.
-
-When the sending SUTP sends a segment, a timer for this specific segment is set. If the sending SUTP receives an ACK for the segment (may be covered by the cumulative ACK) before timout the timer will be ignored. The same applies to the case of receiving a NAK but in that case the sending SUTP must send the segment with the specific sequence number again.
-If a timeout occurs the sending SUTP must send the segment with the specific sequence number again.
-The procedure of sending a segment again, should only be repeated while all repitions together do not take longer than the maximum waiting time. If that is the case the connection must be aborted.
-
-All in all every segment containing more than the 'SACK Chunk' is immediately (negativeley) acknowledged.
-If negatively acknowledged or not acknowledged at all, the sender sends the segment again, therefore a reliable communication is guarenteed.
 
 ## Extensions
 
