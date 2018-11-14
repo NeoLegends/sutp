@@ -79,6 +79,8 @@ The data format is specified in https://laboratory.comsys.rwth-aachen.de/sutp/da
 
 ## Basic Procedures
 
+This chapter defines basic protocol procedures that will be composed to the full protocol automaton later.
+
 Each instance of the protocol has the following properties:
 
 - Receiving window `r` of type `number`
