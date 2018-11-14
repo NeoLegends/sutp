@@ -83,19 +83,19 @@ This chapter defines basic protocol procedures that will be composed to the full
 
 Each instance of the protocol has the following properties:
 
-- Receiving window `r` of type `number`
-- Current sequence number `n` of type `number`
-- Sequence number of the oder side `sB` of type `number`
+- Receiving window `r` of type `integer`
+- Current sequence number `n` of type `integer`
+- Sequence number of the oder side `sB` of type `integer`
 - Destination address `addr` of type `ip`
-- Source and destination port numbers `srcPort` and `dstPort` of type `number`
+- Source and destination port numbers `srcPort` and `dstPort` of type `integer`
 
 ### Abort the session <a name="action-abort-session"></a>
 
 Given:
 - The current sequence number `n`
-- Receiving window `r` of type `number`
+- Receiving window `r` of type `integer`
 - Destination address `addr` of type `ip`
-- Destination port numbers`dstPort` of type `number`
+- Destination port numbers`dstPort` of type `integer`
 
 ...aborting the session is done as follows:
 
@@ -111,7 +111,7 @@ Given:
 
 ...getting a new sequence number is done as follows:
 
-1. Initialize variable `x` of type `number`
+1. Initialize variable `x` of type `integer`
 1. Let `x` be `(n + 1) % 2^32`
 1. Set the current sequence number to `x`
 1. Return `x`
@@ -127,7 +127,7 @@ Given:
 
 ...sending a segment containing the chunks is done as follows:
 
-1. Initialize variable `x` of type `number`
+1. Initialize variable `x` of type `integer`
 1. Initialize variable `buf` of type `binary buffer`
 1. Let `x` be the result of [`Get a new sequence number`](#action-incr-sequence).
 1. Let `buf` be the result of [`Serialize a segment`](#action-serialize-segment) using sequence number `x`, receiving window `r` and list of chunks `ch`.
@@ -168,7 +168,7 @@ Let A be the initiator of the session and B the initiatee.
 
 Given destination address `addrB` and port number `pB` of B, initiating a new SUTP connection between A and B is done as follows:
 
-1. A chooses a random sequence number `sA`, a receiving window size `rA` and initializes variable `sB` (sequence number of B) to be of type `number`
+1. A chooses a random sequence number `sA`, a receiving window size `rA` and initializes variable `sB` (sequence number of B) to be of type `integer`
 1. A opens a UDP listener on a random port number `pA`. If this fails A MUST stop initializing the connection and immediately report the error to the upper layer.
 1. A compiles a new list of chunks `ch1` containing at least the `SYN Chunk` and optionally initialization chunks as required by protocol extensions
 1. Set a timeout `tInit` covering the total connection initiation
