@@ -85,6 +85,7 @@ Each instance of the protocol has the following properties:
 
 - Receiving window `r` of type `number`
 - Current sequence number `n` of type `number`
+- Sequence number of the oder side `sB` of type `number`
 - Destination address `addr` of type `ip`
 - Source and destination port numbers `srcPort` and `dstPort` of type `number`
 
@@ -122,7 +123,7 @@ Given:
 - The current sequence number `n`
 - A list of chunks to transfer `ch`
 - Destination address `addr`
-- Destination port `dstPort`
+- Source port `srcPort` and destination port `dstPort`
 
 ...sending a segment containing the chunks is done as follows:
 
