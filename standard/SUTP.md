@@ -2,11 +2,13 @@
 
 This document describes the Simple UDP Transport Protocol. It is very nice.
 
+
 ## Introduction
 
-The SUTP defines a reliable transport protocol suitable for cases in which, for example, TCP would commonly be used. For quicker iteration on the protocol, however, SUTP is based on UDP datagrams instead of IP packets.
+The SUTP defines a reliable transport protocol suitable for cases in which, for example, TCP would commonly be used.  For quicker iteration on the protocol, however, SUTP is based on UDP datagrams instead of IP packets.
 
 This RFC uses terminology as defined in [[RFC 2119]](https://tools.ietf.org/html/rfc2119).
+
 
 ## Interfaces
 
@@ -17,10 +19,11 @@ The following description of user commands to the SUTP are the minimum requireme
 Format: CONNECT (foreign address, foreign port, options)
 _returns_: connection name
 
-This call causes the SUTP to establish a connection to the specified connection partner using the given internet address and port number, via a 3-way Handshake. This call is of active nature as the calling process will be the connection initiator. For passive listening see [LISTEN](#interface-listen).
-**Options** MAY be omitted. Possible uses are:
-Specifying a maximum waiting time. After not receiving any package from the connection partner for this amount of time, the connection will be forcefully closed, for security reasons.
-Specifying which extensions should be attempted to be used while establishing the connection as the receiving end may not support the desired extensions.
+This call causes the SUTP to establish a connection to the specified connection partner using the given internet address and port number, via a 3-way Handshake. This call is of active nature as the calling process will be the connection initiator. For passive listening see [LISTEN](#interface-listen). `options` MAY be omitted.
+
+Possible uses are:
+- Specifying a maximum waiting time. After not receiving any package from the connection partner for this amount of time, the connection will be forcefully closed, for security reasons.
+- Specifying which extensions should be attempted to be used while establishing the connection as the receiving end may not support the desired extensions.
 
 ### Listen <a name="interface-listen"></a>
 
@@ -62,15 +65,11 @@ This command causes all pending SENDs and RECEIVEs to be aborted and the specifi
 
 ## Reliability
 
-Reliability in SUTP is accomplished by using 'SACK Chunk' and timeouts. At the begining of a new connection a sending timeout and maximum waiting time are defined.
-The sending timeout determines how long a sending SUTP waits for an ACK for a segment after it was sent, before sending it again. The maximum waiting time determines how long a sending SUTP waits for an ACK for a segment after it was sent before the connection will be aborted. It ultimately determines how often a certain segment can be sent again.
-A SUTP instance is both sending and receiving SUTP at the same time.
+Reliability in SUTP is accomplished by using 'SACK Chunk' and timeouts. At the begining of a new connection a sending timeout and maximum waiting time are defined. The sending timeout determines how long a sending SUTP waits for an ACK for a segment after it was sent, before sending it again. The maximum waiting time determines how long a sending SUTP waits for an ACK for a segment after it was sent before the connection will be aborted. It ultimately determines how often a certain segment can be sent again. A SUTP instance is both sending and receiving SUTP at the same time.
 
 ### Receiving SUTP
 
-Sequence numbers of segments that contain only the 'SACK Chunk' are always tagged with an ACK but they are not be acknowledged by the receiving SUTP sending an additional ACK (to avoid ACK loops). For other kind of segments the receiving SUTP acts as follows.
-When a receiving SUTP receives a segment with a correct checksum, the sequence number is tagged with an ACK. When it receives one with an incorrect checksum the sequence number is tagged with a NAK. Then the receiving SUTP checks what the last sequence number is, to which all preceding sequence numbers are tagged with an ACK. This sequence number is the first one to be written in the 'SACK Chunk'-ACK list (cumulative ACK) the rest is added to the 'SACK Chunk' ACK or NAK list according to their tag.
-After that the chunk may be added to a segment, if it is going to be sent immediately, or otherwise to a new segment and is sent to the sending SUTP.
+Sequence numbers of segments that contain only the 'SACK Chunk' are always tagged with an ACK but they are not be acknowledged by the receiving SUTP sending an additional ACK (to avoid ACK loops). For other kind of segments the receiving SUTP acts as follows. When a receiving SUTP receives a segment with a correct checksum, the sequence number is tagged with an ACK. When it receives one with an incorrect checksum the sequence number is tagged with a NAK. Then the receiving SUTP checks what the last sequence number is, to which all preceding sequence numbers are tagged with an ACK. This sequence number is the first one to be written in the 'SACK Chunk'-ACK list (cumulative ACK) the rest is added to the 'SACK Chunk' ACK or NAK list according to their tag. After that the chunk may be added to a segment, if it is going to be sent immediately, or otherwise to a new segment and is sent to the sending SUTP.
 
 This procedure of acknowledging on the receiving SUTP guarentees that every received segment, that contains more than just the SUTP header and the 'SACK Chunk' will be directly acknowledged or negatively acknowledged depending on it's checksum.
 
@@ -78,12 +77,10 @@ This procedure of acknowledging on the receiving SUTP guarentees that every rece
 
 The sending SUTP must have a segment ready to be sent again until it received an ACK for it's sequence number (meanwhile more segments can be sent) or the connection is forcibly closed.
 
-When the sending SUTP sends a segment, a timer for this specific segment is set. If the sending SUTP receives an ACK for the segment (may be covered by the cumulative ACK) before timout the timer will be ignored. The same applies to the case of receiving a NAK but in that case the sending SUTP must send the segment with the specific sequence number again.
-If a timeout occurs the sending SUTP must send the segment with the specific sequence number again.
-The procedure of sending a segment again, should only be repeated while all repitions together do not take longer than the maximum waiting time. If that is the case the connection must be aborted.
+When the sending SUTP sends a segment, a timer for this specific segment is set. If the sending SUTP receives an ACK for the segment (may be covered by the cumulative ACK) before timout the timer will be ignored. The same applies to the case of receiving a NAK but in that case the sending SUTP must send the segment with the specific sequence number again. If a timeout occurs the sending SUTP must send the segment with the specific sequence number again. The procedure of sending a segment again, should only be repeated while all repitions together do not take longer than the maximum waiting time. If that is the case the connection must be aborted.
 
-All in all every segment containing more than the 'SACK Chunk' is immediately (negativeley) acknowledged.
-If negatively acknowledged or not acknowledged at all, the sender sends the segment again, therefore a reliable communication is guarenteed.
+All in all every segment containing more than the 'SACK Chunk' is immediately (negativeley) acknowledged. If negatively acknowledged or not acknowledged at all, the sender sends the segment again, therefore a reliable communication is guarenteed.
+
 
 ## Data Layout
 
@@ -170,6 +167,7 @@ Given:
 
 1. Send a UDP datagram to address `addr` and port `dstPort` containing `buf`
 
+
 ## Handshake
 
 Three way handshake with the following chunks:
@@ -178,16 +176,19 @@ Three way handshake with the following chunks:
 2: <- SYN Chunk + SACK Chunk ACKing 1 + Multiple unspecified init chunks
 3: -> SACK Chunk ACKing 2 + Payload
 
+
 ## Shutdown
 
 1: -> FIN Sending channel closed
 1: <- FIN + SACK Receiving channel closed
+
 
 ## ABRT
 
 1: -> ABRT
 
 Both channels closed
+
 
 ## Extensions
 
