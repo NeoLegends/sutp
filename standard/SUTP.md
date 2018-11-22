@@ -201,7 +201,7 @@ Given destination address `addrB` and port number `pB` of B, initiating a new SU
 
 Both channels closed
 
-##In-Order Arrival
+## In-Order Arrival
 
 Every SUTP segment has a sequence number as described in [Datay Layout](#data-layout).
 A sequence number is unique in a given connection and time context.
