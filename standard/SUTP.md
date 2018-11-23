@@ -205,14 +205,14 @@ Both channels closed
 
 Every SUTP segment has a sequence number as described in [Datay Layout](#data-layout).
 A sequence number is unique in a given connection and time context.
-This means that, on each SUTP side, a sequence number is only assigned to one segment without the sequence number being acknowledged. A sequence number may be assigned twice or more times during a connection, but only after the last segment which had the sequence number was acknowledged!
+This means that, on each SUTP side, a sequence number is only assigned to one segment without the sequence number being acknowledged. A sequence number may be assigned twice or more times during a connection, but only after the last segment which had the sequence number assigned was acknowledged!
 
-As described in [Datay Layout](#data-layout), after choosing the sequence number of the first segment, the sequence number of the following segment is the one of the preceding segment increased by one modulo 2^32.
+After the sequence number for the first segment was chosen, the sequence numbers of the following segments are the ones of the preceding segment increased by one modulo 2^32 (see [Datay Layout](#data-layout)).
 So after receiving the first correct segment a receiving SUTP instance knows in which order the segments were meant to be received by looking at the sequence number of each segment.
 
-A SUTP instance MUST send `data chunk`s in the order they were passed to it. If a segment to be sent shall contain more than one `data chunk`, the order of the `data chunk`s in the segment must comply with the order of the data that was passed to the SUTP instance. So data that was priorly passed to other data MUST be contained in a `data chunk` that is written before the one that contains the other data. 
+A SUTP instance MUST send `data chunk`s in the order they were passed to it. If a segment to be sent shall contain more than one `data chunk`, the order of the `data chunk`s in the segment must comply with the order of the data that was passed to the SUTP instance. Data that was passed prior to other data MUST be contained in a `data chunk` that is written in the segment before the one that contains the other data. 
   
-A SUTP instance MUST always passd data of `data chunk`s to the next layer in the order (by sequence numbers) of the segments the `data chunk`s were in. It MUST NOT pass data of `data chunk`s more than once. If a segment contains more than one `data chunk`, the SUTP instance MUST pass the data of `data chunk`s to the next layer in the order they were written in the segment.
+A SUTP instance MUST always pass data of `data chunk`s to the upper layer in the order (by sequence number) of the segments the `data chunk`s were received in. It MUST NOT pass data of the same `data chunk` more than once. If a segment contains more than one `data chunk`, the SUTP instance MUST pass the data of the `data chunk`s to the upper layer in the order they were written in the segment.
  
 So all in all, In-Order Arrival in SUTP is realised by sequence numbers and a strict order of `data chunk`s in single segment.
 
