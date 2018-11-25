@@ -77,6 +77,7 @@ This command causes all pending SENDs and RECEIVEs to be aborted and the specifi
 
 The data format is specified in https://laboratory.comsys.rwth-aachen.de/sutp/data-format.
 
+
 ## Basic Procedures
 
 This chapter defines basic protocol procedures that will be composed to the full protocol automaton later.
@@ -201,6 +202,7 @@ Given destination address `addrB` and port number `pB` of B, initiating a new SU
 
 Both channels closed
 
+
 ## In-Order Arrival
 
 Every SUTP segment has a sequence number as described in [Datay Layout](#data-layout).
@@ -215,6 +217,7 @@ A SUTP instance MUST send `data chunk`s in the order they were passed to it. If 
 A SUTP instance MUST always pass data of `data chunk`s to the upper layer in the order (by sequence number) of the segments the `data chunk`s were received in. It MUST NOT pass data of the same `data chunk` more than once. If a segment contains more than one `data chunk`, the SUTP instance MUST pass the data of the `data chunk`s to the upper layer in the order they were written in the segment.
  
 So all in all, In-Order Arrival in SUTP is realised by sequence numbers and a strict order of `data chunk`s in single segment.
+
 
 ## Reliability
 
