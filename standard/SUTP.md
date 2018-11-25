@@ -19,6 +19,41 @@ The SUTP defines a reliable transport protocol suitable for cases in which, for 
 This RFC uses terminology as defined in [RFC 2119](https://tools.ietf.org/html/rfc2119).
 
 
+## In-Order Arrival
+
+Every SUTP segment has a sequence number as described in [Data Layout](#data-layout).  A sequence number is unique in a given connection and time context.
+This means that, on each SUTP side, a sequence number MUST be assigned to at most one unacknowledged segment at a time.  Sequence numbers can be reused, but only if every previous segment containing such a sequence number has been acknowledged by the receiver.
+
+After the sequence number for the first segment was chosen, the sequence numbers of subsequent segments increase monotonically by `1` (see Data Layout).
+
+Payload data MUST be transferred in order.
+
+A SUTP instance MUST always pass data of `payload chunk`s to the upper layer in the order (by sequence number) of the segments the `payload chunk`s were received in.  It MUST NOT pass data of the same `payload chunk` more than once.  If a segment contains more than one `payload chunk`, the SUTP instance MUST pass the data of all `payload chunk`s to the upper layer in the order they were written in the segment.
+
+So all in all, In-Order Arrival in SUTP is realised by sequence numbers and a strict order of `payload chunk`s in single segment.
+
+
+## Reliability
+
+Reliability in SUTP is accomplished by using 'SACK Chunk' and timeouts.  At the begining of a new connection a sending timeout and maximum waiting time are defined.  The sending timeout determines how long a sending side waits for an ACK for a segment after it was sent, before sending it again.  The maximum waiting time determines how long a sending side waits for an ACK for a segment after it was sent before the connection will be aborted.  It ultimately determines how often a certain segment can be sent again.  A SUTP instance is both sending and receiving side at the same time.
+
+### Receiving Side
+
+Sequence numbers of segments that contain only the 'SACK Chunk' are always tagged with an ACK but they are not be acknowledged by the receiving side sending an additional ACK (to avoid ACK loops).
+
+For other kind of segments the receiving side MUST act as follows:  When a receiving side receives a segment with a correct checksum, the sequence number is tagged with an ACK.  When it receives one with an incorrect checksum the sequence number is tagged with a NAK.  Then the receiving side checks what the last ACKed sequence number is, to which all preceding sequence numbers are tagged with an ACK as well.  This last sequence number is the first one to be written in the 'SACK Chunk'-ACK list (cumulative ACK) the rest is added to the 'SACK Chunk' NAK list according to their tag.  After that the chunk may be added to a segment, if it is going to be sent immediately, or otherwise to a new segment and is sent to the sending side.
+
+This procedure of acknowledging on the receiving side guarentees that every received segment, that contains more than just the SUTP header and the 'SACK Chunk' will be directly acknowledged or negatively acknowledged depending on it's checksum.
+
+### Sending Side
+
+The sending side must have a segment ready to be sent again until it received an ACK for it's sequence number (meanwhile more segments can be sent) or the connection is forcibly closed.
+
+When the sending side sends a segment, a timer for this specific segment is set.  If the sending side receives an ACK for the segment (may be covered by the cumulative ACK) before timout the timer will be ignored.  The same applies to the case of receiving a NAK but in that case the sending side must send the segment with the specific sequence number again.  If a timeout occurs the sending side must send the segment with the specific sequence number again.  The procedure of sending a segment again, should only be repeated while all repitions together do not take longer than the maximum waiting time.  If that is the case the connection must be aborted.
+
+All in all every segment containing more than the 'SACK Chunk' is immediately (negativeley) acknowledged.  If negatively acknowledged or not acknowledged at all, the sender sends the segment again, therefore a reliable communication is guarenteed.
+
+
 ## Interfaces
 
 The following description of user commands to the SUTP are the minimum requirements to support interprocess communication.
@@ -101,7 +136,6 @@ Given:
 ...aborting the session is done as follows:
 
 1. Let `ch` be a list of chunks containing the ABRT chunk
-1. Add an ABRT chunk to `ch`
 1. [`Send a segment`](#action-send-segment) using chunk list `ch`, current sequence number `n`, receiving window `r`, destination address `addr` and port `dstPort`
 1. Close receiving and sending UDP sockets
 
@@ -186,52 +220,17 @@ Given destination address `addrB` and port number `pB` of B, initiating a new SU
 1. The connection is now initialized
 
 
-## Shutdown
+## Connection Shutdown
 
 1. -> FIN Sending channel closed
 1. <- FIN + SACK Receiving channel closed
 
 
-## ABRT
+## Connection Abort
 
 1. -> ABRT
 
 Both channels closed
-
-
-## In-Order Arrival
-
-Every SUTP segment has a sequence number as described in [Datay Layout](#data-layout).
-A sequence number is unique in a given connection and time context.
-This means that, on each SUTP side, a sequence number is only assigned to one segment without the sequence number being acknowledged. A sequence number may be assigned twice or more times during a connection, but only after the last segment which had the sequence number assigned was acknowledged!
-
-After the sequence number for the first segment was chosen, the sequence numbers of the following segments are the ones of the preceding segment increased by one modulo 2^32 (see [Datay Layout](#data-layout)).
-So after receiving the first correct segment a receiving SUTP instance knows in which order the segments were meant to be received by looking at the sequence number of each segment.
-
-A SUTP instance MUST send `data chunk`s in the order they were passed to it. If a segment to be sent shall contain more than one `data chunk`, the order of the `data chunk`s in the segment must comply with the order of the data that was passed to the SUTP instance. Data that was passed prior to other data MUST be contained in a `data chunk` that is written in the segment before the one that contains the other data. 
-  
-A SUTP instance MUST always pass data of `data chunk`s to the upper layer in the order (by sequence number) of the segments the `data chunk`s were received in. It MUST NOT pass data of the same `data chunk` more than once. If a segment contains more than one `data chunk`, the SUTP instance MUST pass the data of the `data chunk`s to the upper layer in the order they were written in the segment.
- 
-So all in all, In-Order Arrival in SUTP is realised by sequence numbers and a strict order of `data chunk`s in single segment.
-
-
-## Reliability
-
-Reliability in SUTP is accomplished by using 'SACK Chunk' and timeouts.  At the begining of a new connection a sending timeout and maximum waiting time are defined.  The sending timeout determines how long a sending SUTP waits for an ACK for a segment after it was sent, before sending it again.  The maximum waiting time determines how long a sending SUTP waits for an ACK for a segment after it was sent before the connection will be aborted.  It ultimately determines how often a certain segment can be sent again.  A SUTP instance is both sending and receiving SUTP at the same time.
-
-### Receiving SUTP
-
-Sequence numbers of segments that contain only the 'SACK Chunk' are always tagged with an ACK but they are not be acknowledged by the receiving SUTP sending an additional ACK (to avoid ACK loops).  For other kind of segments the receiving SUTP acts as follows.  When a receiving SUTP receives a segment with a correct checksum, the sequence number is tagged with an ACK.  When it receives one with an incorrect checksum the sequence number is tagged with a NAK.  Then the receiving SUTP checks what the last sequence number is, to which all preceding sequence numbers are tagged with an ACK.  This sequence number is the first one to be written in the 'SACK Chunk'-ACK list (cumulative ACK) the rest is added to the 'SACK Chunk' ACK or NAK list according to their tag.  After that the chunk may be added to a segment, if it is going to be sent immediately, or otherwise to a new segment and is sent to the sending SUTP.
-
-This procedure of acknowledging on the receiving SUTP guarentees that every received segment, that contains more than just the SUTP header and the 'SACK Chunk' will be directly acknowledged or negatively acknowledged depending on it's checksum.
-
-### Sending SUTP
-
-The sending SUTP must have a segment ready to be sent again until it received an ACK for it's sequence number (meanwhile more segments can be sent) or the connection is forcibly closed.
-
-When the sending SUTP sends a segment, a timer for this specific segment is set.  If the sending SUTP receives an ACK for the segment (may be covered by the cumulative ACK) before timout the timer will be ignored.  The same applies to the case of receiving a NAK but in that case the sending SUTP must send the segment with the specific sequence number again.  If a timeout occurs the sending SUTP must send the segment with the specific sequence number again.  The procedure of sending a segment again, should only be repeated while all repitions together do not take longer than the maximum waiting time.  If that is the case the connection must be aborted.
-
-All in all every segment containing more than the 'SACK Chunk' is immediately (negativeley) acknowledged.  If negatively acknowledged or not acknowledged at all, the sender sends the segment again, therefore a reliable communication is guarenteed.
 
 
 ## Extensions
@@ -251,7 +250,7 @@ Let A be the initiator of the session and B the initiatee.
 1. A compiles an `SUTP Compression Negotiation Chunk` with all compression algorithms A supports (in order of preference).
 1. A sends this chunk within the first (SYN ->) segment to B.
 1. Upon reception, B, if it supports compression, checks whether it supports any of the algorithms listed.
-    1. If it does support at least one algorithm, B picks _one_ algorithm from the list and also compiles an `SUTP Compression Negotiation Chunk` containing just the ID of that algorithm.  Then B sends this chunk to the sender within the second (SYN <-) segment.
+    1. If it does support at least one algorithm, B picks _one_ algorithm from the list and also compiles an `SUTP Compression Negotiation Chunk` containing just the ID of that algorithm.  For optimal results, B SHOULD try to obey the order of preference A has specified.  Then B sends this chunk to the sender within the second (SYN <-) segment.
     1. If B does not support any of the algorithms listed within the initial `SUTP Compression Negotiation Chunk` it MUST NOT send an `SUTP Compression Negotiation Chunk` back.
 1. Upon receiving the second segment, A checks whether the segment contains an `SUTP Compression Negotiation Chunk`.
     1. If it does, A checks whether the chunk is valid.  A chunk is valid, if: a) the chunk contains at most one ID of a compression algorithm and b) A supports this algorithm.  If the chunk is invalid, a MUST [`Abort the session`](#action-abort-session).
