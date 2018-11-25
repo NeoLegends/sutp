@@ -100,7 +100,7 @@ Given:
 
 ...aborting the session is done as follows:
 
-1. Initialize variable `ch` of type `list of chunks`
+1. Let `ch` be a list of chunks containing the ABRT chunk
 1. Add an ABRT chunk to `ch`
 1. [`Send a segment`](#action-send-segment) using chunk list `ch`, current sequence number `n`, receiving window `r`, destination address `addr` and port `dstPort`
 1. Close receiving and sending UDP sockets
@@ -112,8 +112,7 @@ Given:
 
 ...getting a new sequence number is done as follows:
 
-1. Initialize variable `x` of type `integer`
-1. Let `x` be `(n + 1) % 2^32`
+1. Let `x` be an integer with value `(n + 1) % 2^32`
 1. Set the current sequence number to `x`
 1. Return `x`
 
@@ -128,8 +127,6 @@ Given:
 
 ...sending a segment containing the chunks is done as follows:
 
-1. Initialize variable `x` of type `integer`
-1. Initialize variable `buf` of type `binary buffer`
 1. Let `x` be the result of [`Get a new sequence number`](#action-incr-sequence).
 1. Let `buf` be the result of [`Serialize a segment`](#action-serialize-segment) using sequence number `x`, receiving window `r` and list of chunks `ch`.
 1. [`Transfer a segment`](#action-transfer-segment) using binary buffer `buf`, destination address `addr` and destination port `dstPort`.
@@ -143,8 +140,7 @@ Given:
 
 ...serializing a segment is done as follows:
 
-1. Let `buf` be a variable of type `binary buffer`
-1. Write segment contents to binary buffer
+1. Write segment contents to a binary buffer `buf`
     1. Write base header to buffer using sequence number `n` and receiving window `r`
     1. Write chunks to buffer
 1. Compute CRC-32 of the current contents of `buf`
