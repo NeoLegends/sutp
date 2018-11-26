@@ -26,7 +26,7 @@ This means that, on each SUTP side, a sequence number MUST be assigned to at mos
 
 After the sequence number for the first segment was chosen, the sequence numbers of subsequent segments increase monotonically by `1` (see Data Layout).
 
-Payload data MUST be transferred in order.
+Payload data MUST be transferred in order. This requires that payload data MUST be written to the payload chunks in the order it was received from the upper layer.
 
 A SUTP instance MUST always pass data of `payload chunk`s to the upper layer in the order (by sequence number) of the segments the `payload chunk`s were received in.  It MUST NOT pass data of the same `payload chunk` more than once.  If a segment contains more than one `payload chunk`, the SUTP instance MUST pass the data of all `payload chunk`s to the upper layer in the order they were written in the segment.
 
@@ -52,6 +52,11 @@ The sending side must have a segment ready to be sent again until it received an
 When the sending side sends a segment, a timer for this specific segment is set.  If the sending side receives an ACK for the segment (may be covered by the cumulative ACK) before timout the timer will be ignored.  The same applies to the case of receiving a NAK but in that case the sending side must send the segment with the specific sequence number again and reset the timer.  If a timeout occurs the sending side must send the segment with the specific sequence number again.  The procedure of sending a segment again, should only be repeated while all repitions together do not take longer than the maximum waiting time.  If that is the case the connection must be aborted.
 
 All in all every segment containing more than the 'SACK Chunk' is immediately (negativeley) acknowledged.  If negatively acknowledged or not acknowledged at all, the sender sends the segment again, therefore a reliable communication is guarenteed.
+
+
+## Flow Control
+
+
 
 
 ## Interfaces
