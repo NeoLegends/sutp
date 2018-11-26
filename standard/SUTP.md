@@ -56,7 +56,13 @@ All in all every segment containing more than the 'SACK Chunk' is immediately (n
 
 ## Flow Control
 
+SUTP is a flow-controlled protocol that tries to avoid overflowing the receiver with data.  This is accomplished by utilizing a sliding-window mechanism to make the sender adapt its send rate without introducing too much overhead.  The window size of one side is specified in a dedicated header field.
 
+An instance of SUTP MUST have a receive buffer into which all incoming data is buffered until further processing of the upper layer has occured.  The size of the receive buffer is initially chosen during connection setup.  On a normal computer or smartphone, the authors recommend a size of at least 8MB.  To account for machine load, the size of the receive buffer MAY vary at runtime.
+
+The receiving side MUST specify the amount of total bytes it is currently willing to accept without futher processing in the window size field in each chunk.  The sending size SHOULD NOT at a time send more data than whatever is the last known value of the receiver's window size, without any of the data being ACKed or NAKed.
+
+The receiver MUST always only consider the last known value of the window size field for its calculations.
 
 
 ## Interfaces
