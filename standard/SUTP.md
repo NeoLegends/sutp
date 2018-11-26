@@ -131,7 +131,7 @@ This chapter defines basic protocol procedures that will be composed to the full
 Each instance of the protocol has the following properties:
 
 - Receiving window `r` of type `integer`
-- Current sequence number `n` of type `integer`
+- Current sequence number `sA` of type `integer`
 - Sequence number of the other side `sB` of type `integer`
 - Destination address `addr` of type `ip`
 - Source and destination port numbers `srcPort` and `dstPort` of type `integer`
@@ -139,7 +139,7 @@ Each instance of the protocol has the following properties:
 ### Abort the session <a name="action-abort-session"></a>
 
 Given:
-- The current sequence number `n`
+- The current sequence number `sA`
 - Receiving window `r` of type `integer`
 - Destination address `addr` of type `ip`
 - Destination port numbers`dstPort` of type `integer`
@@ -147,13 +147,13 @@ Given:
 ...aborting the session is done as follows:
 
 1. Let `ch` be a list of chunks containing the ABRT chunk
-1. [`Send a segment`](#action-send-segment) using chunk list `ch`, current sequence number `n`, receiving window `r`, destination address `addr` and port `dstPort`
+1. [`Send a segment`](#action-send-segment) using chunk list `ch`, current sequence number `sA`, receiving window `r`, destination address `addr` and port `dstPort`
 1. Close receiving and sending UDP sockets
 
 ### Get a new sequence number <a name="action-incr-sequence"></a>
 
 Given:
-- The current sequence number `n`
+- The current sequence number `sA`
 
 ...getting a new sequence number is done as follows:
 
@@ -165,7 +165,7 @@ Given:
 
 Given:
 - The receiving window `r`
-- The current sequence number `n`
+- The current sequence number `sA`
 - A list of chunks to transfer `ch`
 - Destination address `addr`
 - Source port `srcPort` and destination port `dstPort`
@@ -179,14 +179,14 @@ Given:
 ### Serialize a segment <a name="action-serialize-segment"></a>
 
 Given:
-- A sequence number `n`
+- A sequence number `sA`
 - The receiving window `r`
 - A list of chunks to transfer `ch`
 
 ...serializing a segment is done as follows:
 
 1. Write segment contents to an empty binary buffer `buf`
-    1. Write base header to buffer using sequence number `n` and receiving window `r`
+    1. Write base header to buffer using sequence number `sA` and receiving window `r`
     1. Write chunks to buffer
 1. Compute CRC-32 of the current contents of `buf`
 1. Write CRC-32 sum to buffer
