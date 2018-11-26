@@ -204,7 +204,11 @@ Given:
 1. Send a UDP datagram to address `addr` and port `dstPort` containing `buf`
 
 
-## Session initiation
+## Session Lifecycle
+
+This chapter describes how an SUTP session between two parties is initialized, held-up during data transfer phase and shutdown in the end.
+
+### Session initiation
 
 Let A be the initiator of the session and B the initiatee.
 
@@ -215,12 +219,12 @@ Given destination address `addrB` and port number `pB` of B, initiating a new SU
 1. A compiles a new list of chunks `ch1` containing at least the `SYN Chunk` and optionally initialization chunks as required by protocol extensions
 1. Set a timeout `tInit` covering the total connection initiation
     - If `tInit` elapses before the connection can be initiated, A MUST stop initializing the connection and immediately report the error to the upper layer
-1. Let A [`Send a segment`](#action-send-segment) (in the following called `s1`) using chunk list `ch1`, `addrB`, `pA`, `pB`, `sA` and `rA`
+1. Let A [`Send a segment`](#action-send-segment) (in the following called `s1`) using chunk list `ch1`, `addrB`, `pA`, `pB`, `sA` and `rA`. This fragment is what is referred to by (SYN ->)
 1. Set a timeout for B's answer `tB`
     - If B does not respond within the timeout, A MUST stop initializing the connection and immediately report the error to the upper layer
     - Otherwise continue normally
-1. A parses the received data into an SUTP segment `s2`
-1. Ensure `s2` contains a `SYN Chunk` and a `SACK Chunk` `chSack`
+1. A parses the received data into an SUTP segment `s2`. This is what is referred to by (SYN <-)
+1. Ensure `s2` is a valid SUTP segment and contains a `SYN Chunk` and a `SACK Chunk` `chSack`
     - If not, A MUST [`Abort the session`](#action-abort-session) and report the error to the upper layer
     - Otherwise continue normally
 1. Ensure `chSack` ACKs `s1`
@@ -228,16 +232,51 @@ Given destination address `addrB` and port number `pB` of B, initiating a new SU
     - Otherwise continue normally
 1. Let `sB` be `s2`'s sequence number
 1. If present, initialize any protocol extensions
-1. The connection is now initialized
+1. The connection is now initialized.  Proceed with `Data Transfer`-phase.
 
+### Data Transfer
 
-## Connection Shutdown
+Let A and B be the both SUTP session endpoints.
+
+If A wishes to send data `d` to B it must:
+
+1. Check what B's last `window size` is
+    - If the window size is larger than the payload A wishes to send, A may proceed
+    - Otherwise A must wait until B has informed A about free window space (usually by responding with ACK / NAK for some packets)
+1. Potentially apply compression to `d` and compile payload chunk containing `d`
+1. Subtract `d`s size from the local copy of B's window size
+1. Set a timer `tAbort` guarding against complete protocol or network failure.  The authors recommend a value of at least 30 seconds for a regular wired internet connection, a larger value for wireless or mobile networks.
+    - If `tAbort` elapses, A MUST [`Abort the session`](#action-abort-session) and report the error to the upper layer
+1. A [`Sends a segment`](#action-send-segment) to B containing the compiled payload chunk
+1. Set a timer `tTimeout`.  The authors recommend a value of 1 second for all types of connections.
+    - If `tTimeout` elapses, continue with step 4.
+1. Wait for B's answer.
+    - If it contains a SACK-Chunk, see if it ACKs or NAKs the previously sent segment.
+    - If not, proceed with step 7.
+1. If B's answer ACKs the previously sent segment, cancel `tTimeout` and `tAbort` and report success to the upper layer.
+1. If B's answer NAKs the previously sent segment, check whether the window size still allows sending the segment.
+    - If it does, continue with step 4.
+    - If it does not, wait until B reports free window space, then continue with step 4.
+
+When A receives a segment `s` containing payload data from B it must:
+
+1. Check whether A's current remaining window size allows processing `s` and whether the CRC-32 sum matches
+    - If it does not, [`Send a segment`](#action-send-segment) containing a NAK to B and return.
+    - If it does, continue normally
+1. Tag `s` with ACK
+1. Subtract the size of `s` from the current window size
+1. Check if the window size has become close to 0 (by some implementation-specific margin)
+    - If it does, immediately [`Send a segment`](#action-send-segment) ACKing `s` and potentially other successfully received segments and report the current window size.  Return
+    - If it does not, continue normally
+1. Apply a debounce mechanism for all events leading up to here.  The authors recommend debouncing to 200ms
+1. [`Send a segment`](#action-send-segment) containing a SACK chunk for all outstanding segments to be ACKed and NAKed.
+
+### Connection Shutdown
 
 1. -> FIN Sending channel closed
 1. <- FIN + SACK Receiving channel closed
 
-
-## Connection Abort
+### Connection Abort
 
 1. -> ABRT
 
