@@ -132,7 +132,7 @@ Each instance of the protocol has the following properties:
 
 - Receiving window `r` of type `integer`
 - Current sequence number `n` of type `integer`
-- Sequence number of the oder side `sB` of type `integer`
+- Sequence number of the other side `sB` of type `integer`
 - Destination address `addr` of type `ip`
 - Source and destination port numbers `srcPort` and `dstPort` of type `integer`
 
