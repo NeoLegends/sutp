@@ -35,23 +35,39 @@ So all in all, In-Order Arrival in SUTP is realised by sequence numbers and a st
 
 ## Reliability
 
-Reliability in SUTP is accomplished by using 'SACK Chunk' and timeouts.  At the begining of a new connection a sending timeout and maximum waiting time are defined.  The sending timeout determines how long a sending side waits for an ACK for a segment after it was sent, before sending it again.  The maximum waiting time determines how long a sending side waits for an ACK for a segment after it was sent before the connection will be aborted.  It ultimately determines how often a certain segment can be sent again.  A SUTP instance is both sending and receiving side at the same time.
+### List of chunks not being specifically acknowledged <a name="no-ACK-List"></a>
+
+1. `SACK Chunk`
+
+
+Reliability in SUTP is accomplished by using 'SACK Chunk' and timeouts.
+
+At the beginning of a new connection a sending timeout, maximum waiting time and a receiving timeout are defined.  
+The sending timeout determines how long a sending side waits for an acknowledegment, before sending the segment again.  
+The maximum waiting time determines how long a sending side waits for an acknowledgement before the connection will be aborted.  It ultimately determines how often a certain segment can be sent again.  
+The receiving timout determines how long a receiving side waits for an unsuccesfully sent segment before it negativelyy acknowledges it.  
+The maximum waiting time SHOULD ne greater than the sending timeout and the sending timeout SHOULD be greater than the roundtriptime.
+
+A SUTP instance can be both sending and receiving side at the same time.
 
 ### Receiving Side
 
-Sequence numbers of segments that contain only the 'SACK Chunk' are always tagged with an ACK but they are not be acknowledged by the receiving side sending an additional ACK (to avoid ACK loops).
+A segment that was incorrectly (incorrect checksum) received is discarded without any further action.
 
-For other kind of segments the receiving side MUST act as follows:  When a receiving side receives a segment with a correct checksum, the sequence number is tagged with an ACK.  When it receives one with an incorrect checksum the sequence number is tagged with a NAK.  Then the receiving side checks what the last ACKed sequence number is, to which all preceding sequence numbers are tagged with an ACK as well.  This last sequence number is the first one to be written in the 'SACK Chunk'-ACK list (cumulative ACK) the rest is added to the 'SACK Chunk' NAK list according to their tag.  After that the chunk may be added to a segment, if it is going to be sent immediately, or otherwise to a new segment and is sent to the sending side.
+The last segment's sequence number, to which all preceding segments were successfully received, is used for the cumulative acknowledgment.  If there have been subsequent segments successfully received, the the segments in between that were not succesfully received yet, are now handled as unsuccessfully sent.  A timer (receiving timeout) is set for every unsuccessfully sent segment.  If it has not been succesfully received on timeout, its sequence number is added to the NAK-List.  
+After every received segment containing more than chunks of this [list](#no-ACK-List) and on every timeout for an unsuccefully sent segment a SACK-CHUNK built as described above, MUST be sent to the sending SUTP.  This way segments only containing chunks of this [list](#no-ACK-List) are not directly acknowledged (to avoid ACK loops), if received correctly. But they are eventually handled as unsuccessfully sent, if incorrectly (incorrect checksum) received.
 
-This procedure of acknowledging on the receiving side guarentees that every received segment, that contains more than just the SUTP header and the 'SACK Chunk' will be directly acknowledged or negatively acknowledged depending on it's checksum.
 
 ### Sending Side
 
-The sending side must have a segment ready to be sent again until it received an ACK for it's sequence number (meanwhile more segments can be sent) or the connection is forcibly closed.
+The sending side MUST have a segment ready to be sent again until it has been acknowledged or the connection is forcibly closed.
 
-When the sending side sends a segment, a timer for this specific segment is set.  If the sending side receives an ACK for the segment (may be covered by the cumulative ACK) before timout the timer will be ignored.  The same applies to the case of receiving a NAK but in that case the sending side must send the segment with the specific sequence number again and reset the timer.  If a timeout occurs the sending side must send the segment with the specific sequence number again.  The procedure of sending a segment again, should only be repeated while all repitions together do not take longer than the maximum waiting time.  If that is the case the connection must be aborted.
+For a segment only containing chunks of this [list](#no-ACK-List) a timer (sending timer) is set, if no negative acknowledement has been received on timeout, the segment is indirectly acknowleded.  
+For every other sent segment two timers (sending timeout and maximum waiting time) are set.  If the maximum waiting time timeout occurs before the segment has been acknowledged, the connection MUST be aborted.  
+A segment must be sent again if no acknowledement has been received before the sending timeout occurs or when a negative acknowledgement was received.
 
-All in all every segment containing more than the 'SACK Chunk' is immediately (negativeley) acknowledged.  If negatively acknowledged or not acknowledged at all, the sender sends the segment again, therefore a reliable communication is guarenteed.
+
+Every segment is directly/indirectly negatively or positevely acknowledged in an appropriate time.  If negatively acknowledged or not acknowledged at all, the segment is sent again, therefore a reliable communication is guarenteed.
 
 
 ## Flow Control
