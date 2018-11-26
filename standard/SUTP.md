@@ -174,7 +174,7 @@ Given:
 
 ...serializing a segment is done as follows:
 
-1. Write segment contents to a binary buffer `buf`
+1. Write segment contents to an empty binary buffer `buf`
     1. Write base header to buffer using sequence number `n` and receiving window `r`
     1. Write chunks to buffer
 1. Compute CRC-32 of the current contents of `buf`
