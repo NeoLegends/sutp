@@ -49,7 +49,7 @@ A SUTP instance can be both sending and receiving side at the same time.
 
 A segment that was incorrectly (incorrect checksum) received is discarded without any further action.
 
-The last segment's sequence number, to which all preceding segments were successfully received, is used for the cumulative acknowledgment.  If there have been subsequent segments successfully received, the the segments in between that were not succesfully received yet, are now handled as unsuccessfully sent.  A timer (receiving timeout) is set for every unsuccessfully sent segment.  If it has not been succesfully received on timeout, its sequence number is added to the NAK-List.
+The last segment's sequence number, to which all preceding segments were successfully received, is used for the cumulative acknowledgment.  If there have been subsequent segments successfully received, the segments in between that were not succesfully received yet, are now handled as unsuccessfully sent.  A timer (receiving timeout) is set for every unsuccessfully sent segment.  If it has not been succesfully received on timeout, its sequence number is added to the NAK-List.
 After every received segment containing more than chunks of this [list](#no-ACK-List) and on every timeout for an unsuccefully sent segment a SACK-CHUNK built as described above, MUST be sent to the sending SUTP.  This way segments only containing chunks of this [list](#no-ACK-List) are not directly acknowledged (to avoid ACK loops), if received correctly. But they are eventually handled as unsuccessfully sent, if incorrectly (incorrect checksum) received.
 
 
@@ -257,7 +257,7 @@ If A wishes to send data `d` to B it must:
 
 1. Check what B's last `window size` is
     - If the window size is larger than the payload A wishes to send, A may proceed
-    - Otherwise A must wait until B has informed A about free window space (usually by responding with ACK / NAK for some packets)
+    - Otherwise A must wait until B has informed A about free window space (usually by responding with ACK / NAK for some segments)
 1. Potentially apply compression to `d` and compile payload chunk containing `d`
 1. Subtract `d`s size from the local copy of B's window size
 1. Set a timer `tAbort` guarding against complete protocol or network failure.  The authors recommend a value of at least 30 seconds for a regular wired internet connection, a larger value for wireless or mobile networks.
@@ -275,10 +275,13 @@ If A wishes to send data `d` to B it must:
 
 When A receives a segment `s` containing payload data from B it must:
 
-1. Check whether A's current remaining window size allows processing `s` and whether the CRC-32 sum matches
+1. Check whether A's current remaining window size allows processing `s`
     - If it does not, [`Send a segment`](#action-send-segment) containing a NAK to B and return.
-    - If it does, continue normally
-1. Tag `s` with ACK
+1. Check whether the CRC-32 sum matches
+    - If it does not, discard the segment and continue with step 7
+1. Mark `s` as successfully received 
+1. Check if `s` has the expected next sequence number
+    - If not, set timer `rTimeout` for the missing segments. If `rTimeout` elapses before those segments are successfully received mark them as unsuccessfully sent
 1. Subtract the size of `s` from the current window size
 1. Check if the window size has become close to 0 (by some implementation-specific margin)
     - If it does, immediately [`Send a segment`](#action-send-segment) ACKing `s` and potentially other successfully received segments and report the current window size.  Return
