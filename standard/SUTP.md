@@ -22,7 +22,7 @@ This RFC uses terminology as defined in [RFC 2119](https://tools.ietf.org/html/r
 ## In-Order Arrival
 
 Every SUTP segment has a sequence number as described in [Data Layout](#data-layout).  A sequence number is unique in a given connection and time context.
-This means that, on each SUTP side, a sequence number MUST be assigned to at most one unacknowledged segment at a time.  Sequence numbers can be reused, but only if every previous segment containing such a sequence number has been acknowledged by the receiver.
+This means that, on each SUTP sidek, a sequence number MUST be assigned to at most one unacknowledged segment at a time.  Sequence numbers can be reused, but only if every previous segment containing such a sequence number has been acknowledged by the receiver.
 
 After the sequence number for the first segment was chosen, the sequence numbers of subsequent segments increase monotonically by `1` (see Data Layout).
 
