@@ -289,14 +289,31 @@ When A receives a segment `s` containing payload data from B it must:
 
 ### Connection Shutdown
 
-1. -> FIN Sending channel closed
-1. <- FIN + SACK Receiving channel closed
+Let A and B be the both SUTP session endpoints.
+
+If A wishes to shutdown the connection to B it must:
+
+1. [`Send a segment`](#action-send-segment) containing a `FIN Chunk`.
+1. After receiving an ACK for the segment that contained the `FIN CHUNK`, A MUST NOT send any further segments containing payload but MUST still ACK/NACK any incoming segments from B.
+1. After receiving a segment from B containing a `FIN Chunk`, A can close the connection and should free its used ressources.
+
+If A receives a segment containing a `FIN Chunk`:
+
+1. A MAY continue to transfer data to B until satisfied.
+1. After A finihsed transfering all its data, A MUST [`Send a segment`](#action-send-segment) containing a `FIN Chunk` to B.
+1. After receiving an ACK for the segment that contained the `FIN Chunk`, A can close the connection and should free its used ressources. 
+
+The connection between A and B is now shutdown succesfully.
 
 ### Connection Abort
 
-1. -> ABRT
+Let A and B be the both SUTP session endpoints.
 
-Both channels closed
+If any session endpoint wishes to abort the session it must:
+
+1. Abort the session according to [`Abort the session`](#action-abort-session)
+
+Any endpoint receiving a segment containing an `ABRT Chunk` MUST NOT transfer any more data and instead discard any data yet to handle. It MUST NOT answer in any way by sending a segment (neither ABRT chunk or ACK for the ABRT chunk segment). The receiving endpoint should free all its ressources.
 
 
 ## Extensions
