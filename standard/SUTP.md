@@ -42,10 +42,10 @@ So all in all, In-Order Arrival in SUTP is realised by sequence numbers and a st
 
 Reliability in SUTP is accomplished by using 'SACK Chunk' and timeouts.
 
-At the beginning of a new connection a sending timeout, maximum waiting time and a receiving timeout are defined.  
-The sending timeout determines how long a sending side waits for an acknowledegment, before sending the segment again.  
-The maximum waiting time determines how long a sending side waits for an acknowledgement before the connection will be aborted.  It ultimately determines how often a certain segment can be sent again.  
-The receiving timout determines how long a receiving side waits for an unsuccesfully sent segment before it negativelyy acknowledges it.  
+At the beginning of a new connection a sending timeout, maximum waiting time and a receiving timeout are defined.
+The sending timeout determines how long a sending side waits for an acknowledegment, before sending the segment again.
+The maximum waiting time determines how long a sending side waits for an acknowledgement before the connection will be aborted.  It ultimately determines how often a certain segment can be sent again.
+The receiving timout determines how long a receiving side waits for an unsuccesfully sent segment before it negativelyy acknowledges it.
 The maximum waiting time SHOULD ne greater than the sending timeout and the sending timeout SHOULD be greater than the roundtriptime.
 
 A SUTP instance can be both sending and receiving side at the same time.
@@ -54,7 +54,7 @@ A SUTP instance can be both sending and receiving side at the same time.
 
 A segment that was incorrectly (incorrect checksum) received is discarded without any further action.
 
-The last segment's sequence number, to which all preceding segments were successfully received, is used for the cumulative acknowledgment.  If there have been subsequent segments successfully received, the the segments in between that were not succesfully received yet, are now handled as unsuccessfully sent.  A timer (receiving timeout) is set for every unsuccessfully sent segment.  If it has not been succesfully received on timeout, its sequence number is added to the NAK-List.  
+The last segment's sequence number, to which all preceding segments were successfully received, is used for the cumulative acknowledgment.  If there have been subsequent segments successfully received, the the segments in between that were not succesfully received yet, are now handled as unsuccessfully sent.  A timer (receiving timeout) is set for every unsuccessfully sent segment.  If it has not been succesfully received on timeout, its sequence number is added to the NAK-List.
 After every received segment containing more than chunks of this [list](#no-ACK-List) and on every timeout for an unsuccefully sent segment a SACK-CHUNK built as described above, MUST be sent to the sending SUTP.  This way segments only containing chunks of this [list](#no-ACK-List) are not directly acknowledged (to avoid ACK loops), if received correctly. But they are eventually handled as unsuccessfully sent, if incorrectly (incorrect checksum) received.
 
 
@@ -62,8 +62,8 @@ After every received segment containing more than chunks of this [list](#no-ACK-
 
 The sending side MUST have a segment ready to be sent again until it has been acknowledged or the connection is forcibly closed.
 
-For a segment only containing chunks of this [list](#no-ACK-List) a timer (sending timer) is set, if no negative acknowledement has been received on timeout, the segment is indirectly acknowleded.  
-For every other sent segment two timers (sending timeout and maximum waiting time) are set.  If the maximum waiting time timeout occurs before the segment has been acknowledged, the connection MUST be aborted.  
+For a segment only containing chunks of this [list](#no-ACK-List) a timer (sending timer) is set, if no negative acknowledement has been received on timeout, the segment is indirectly acknowleded.
+For every other sent segment two timers (sending timeout and maximum waiting time) are set.  If the maximum waiting time timeout occurs before the segment has been acknowledged, the connection MUST be aborted.
 A segment must be sent again if no acknowledement has been received before the sending timeout occurs or when a negative acknowledgement was received.
 
 
@@ -289,19 +289,19 @@ When A receives a segment `s` containing payload data from B it must:
 
 ### Connection Shutdown
 
-Let A and B be the both SUTP session endpoints.
+SUTP supports half-open connections. Let A and B be the both SUTP session endpoints.
 
 If A wishes to shutdown the connection to B it must:
 
 1. [`Send a segment`](#action-send-segment) containing a `FIN Chunk`.
-1. After receiving an ACK for the segment that contained the `FIN CHUNK`, A MUST NOT send any further segments containing payload but MUST still ACK/NACK any incoming segments from B.
+1. After receiving an ACK for the segment that contained the `FIN CHUNK`, A MUST NOT send any further segments containing payload but MUST still ACK/NACK any incoming segments from B and process any received data.
 1. After receiving a segment from B containing a `FIN Chunk`, A can close the connection and should free its used ressources.
 
 If A receives a segment containing a `FIN Chunk`:
 
 1. A MAY continue to transfer data to B until satisfied.
 1. After A finihsed transfering all its data, A MUST [`Send a segment`](#action-send-segment) containing a `FIN Chunk` to B.
-1. After receiving an ACK for the segment that contained the `FIN Chunk`, A can close the connection and should free its used ressources. 
+1. After receiving an ACK for the segment that contained the `FIN Chunk`, A can close the connection and should free its used ressources.
 
 The connection between A and B is now shutdown succesfully.
 
