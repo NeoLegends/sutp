@@ -37,17 +37,13 @@ So all in all, In-Order Arrival in SUTP is realised by sequence numbers and a st
 
 Reliability in SUTP is accomplished by using 'SACK Chunk' and timeouts.
 
-At the beginning of a new connection a sending timeout, maximum waiting time and a receiving timeout are defined.
+At the beginning of a new connection a sending timeout, maximum waiting time and a receiving timeout are defined (standard values independent of the connection may be used).
 The sending timeout determines how long a sending side waits for an acknowledegment, before sending the segment again.
 The maximum waiting time determines how long a sending side waits for an acknowledgement before the connection will be aborted.  It ultimately determines how often a certain segment can be sent again.
-The receiving timout determines how long a receiving side waits for an unsuccesfully sent segment before it negativelyy acknowledges it.
-The maximum waiting time SHOULD ne greater than the sending timeout and the sending timeout SHOULD be greater than the roundtriptime.
+The receiving timout determines how long a receiving side waits for an unsuccesfully sent segment before it negatively acknowledges it.
+The maximum waiting time SHOULD be greater than the sending timeout and the sending timeout SHOULD be greater than the roundtriptime.
 
 A SUTP instance can be both sending and receiving side at the same time.
-
-### List of chunks not being specifically acknowledged <a name="no-ACK-List"></a>
-
-1. `SACK Chunk`
 
 ### Receiving Side
 
@@ -67,6 +63,10 @@ A segment must be sent again if no acknowledement has been received before the s
 
 
 Every segment is directly/indirectly negatively or positevely acknowledged in an appropriate time.  If negatively acknowledged or not acknowledged at all, the segment is sent again, therefore a reliable communication is guarenteed.
+
+### List of chunks not being specifically acknowledged <a name="no-ACK-List"></a>
+
+1. `SACK Chunk`
 
 
 ## Flow Control
