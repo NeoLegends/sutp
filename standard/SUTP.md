@@ -284,7 +284,7 @@ When A receives a segment `s` containing payload data from B it must:
 1. Check if the window size has become close to 0 (by some implementation-specific margin)
     - If it does, immediately [`Send a segment`](#action-send-segment) ACKing `s` and potentially other successfully received segments and report the current window size.  Return
     - If it does not, continue normally
-1. Apply a debounce mechanism for all events leading up to here.  The authors recommend debouncing to 200ms
+1. Apply a [sampling mechanism](http://reactivex.io/documentation/operators/sample.html) for all events leading up to here.  The authors recommend an interval of about 200ms
 1. [`Send a segment`](#action-send-segment) containing a SACK chunk for all outstanding segments to be ACKed and NAKed.
 
 ### Connection Shutdown
