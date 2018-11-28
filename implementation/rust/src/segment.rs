@@ -59,7 +59,7 @@ pub enum Chunk {
     SecurityFlag(bool),
 
     /// Unknown chunk with arbitrary data.
-    Unknown(Vec<u8>),
+    Unknown(u16, Vec<u8>),
 }
 
 /// The type of compression algorithm to be applied.
@@ -107,7 +107,7 @@ impl Chunk {
             0x4 => Self::read_sack(r),
             0xa0 => Self::read_compression_negotiation(r),
             0xfe => Self::read_security_flag(r),
-            _ => Self::read_unknown(r),
+            x => Self::read_unknown(x, r),
         }?;
 
         // Discard padding between chunks
@@ -133,7 +133,7 @@ impl Chunk {
             Chunk::SecurityFlag(is_insecure) =>
                 Self::write_security_flag(*is_insecure, w),
             Chunk::Syn => Self::write_syn(w),
-            _ => unreachable!("cannot write unknown chunk"),
+            Chunk::Unknown(ty, data) => Self::write_unknown(*ty, data, w),
         }?;
 
         // Write padding as necessary
@@ -182,9 +182,9 @@ impl Chunk {
     /// The implementation is based on read_unknown and just
     /// changes the type of the chunk that was read.
     fn read_payload(r: &mut impl Read) -> Result<(Self, u16)> {
-        Self::read_unknown(r)
+        Self::read_unknown(0, r)
             .map(|(ch, len)| match ch {
-                Chunk::Unknown(data) => (Chunk::Payload(data), len),
+                Chunk::Unknown(_, data) => (Chunk::Payload(data), len),
                 _ => unreachable!("expected `Unknown` variant"),
             })
     }
@@ -226,13 +226,13 @@ impl Chunk {
     }
 
     /// Reads the data of an unknown chunk into a buffer.
-    fn read_unknown(r: &mut impl Read) -> Result<(Self, u16)> {
+    fn read_unknown(ty: u16, r: &mut impl Read) -> Result<(Self, u16)> {
         let len = r.read_u16::<NetworkEndian>()?;
 
         let mut buf = vec![0u8; len as usize];
         r.read_exact(buf.as_mut())?;
 
-        Ok((Chunk::Payload(buf), len))
+        Ok((Chunk::Unknown(ty, buf), len))
     }
 
     /// Reads a flag (zero-sized) chunk from the reader.
@@ -336,6 +336,16 @@ impl Chunk {
     fn write_syn(w: &mut impl Write) -> Result<u16> {
         Self::write_chunk_header(0x1, 0, w)?;
         Ok(0)
+    }
+
+    /// Writes an unknown chunk of the given type.
+    fn write_unknown(ty: u16, data: &[u8], w: &mut impl Write) -> Result<u16> {
+        assert!(data.len() <= u16::MAX as usize);
+
+        Self::write_chunk_header(ty, data.len() as u16, w)?;
+        w.write_all(data)?;
+
+        Ok(data.len() as u16)
     }
 
     /// Writes chunk type and payload length to the given writer.
