@@ -82,10 +82,8 @@ impl Chunk {
         }?;
 
         // Apply padding between chunks
-        Self::discard_exact(
-            r,
-            Self::calculate_padding(bytes_read as usize) as u64,
-        )?;
+        let padding = Self::calculate_padding(bytes_read as usize);
+        Self::discard_exact(r, padding as u64)?;
 
         Ok(Some(variant))
     }
