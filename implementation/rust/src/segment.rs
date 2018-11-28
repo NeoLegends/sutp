@@ -193,22 +193,11 @@ impl Chunk {
     fn read_sack(r: &mut impl Read) -> Result<(Self, u16)> {
         let len = r.read_u16::<NetworkEndian>()?;
 
-        debug_log_assert!(len >= (U32_SIZE * 2));
+        debug_log_assert!(len >= U32_SIZE);
         debug_log_eq!(len % U32_SIZE, 0);
 
         let ack_no = r.read_u32::<NetworkEndian>()?;
-        let nak_list_len = r.read_u32::<NetworkEndian>()?;
-
-        // ARGH: We have redundancy in the protocol, so least ensure
-        // the values match up.
-        //
-        // len is in given bytes, nak_list_len in "entries".
-        debug_log_eq!(
-            len as u32 + (2 * U32_SIZE as u32),
-            nak_list_len * U32_SIZE as u32
-        );
-
-        let nak_list = (0..nak_list_len)
+        let nak_list = (0..((len - U32_SIZE) / U32_SIZE))
             .into_iter()
             .map(|_| r.read_u32::<NetworkEndian>())
             .collect::<Result<_>>()?;
@@ -320,14 +309,13 @@ impl Chunk {
         nak_list: &[u32],
         w: &mut impl Write,
     ) -> Result<u16> {
-        let payload_len = 2 * U32_SIZE as usize +
+        let payload_len = U32_SIZE as usize +
             nak_list.len() as usize * U32_SIZE as usize;
 
         assert!(payload_len <= u16::MAX as usize);
         Self::write_chunk_header(0x4, payload_len as u16, w)?;
 
         w.write_u32::<NetworkEndian>(ack_no)?;
-        w.write_u32::<NetworkEndian>(nak_list.len() as u32)?;
 
         for &nak_no in nak_list {
             w.write_u32::<NetworkEndian>(nak_no)?;
