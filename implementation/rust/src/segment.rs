@@ -112,7 +112,7 @@ impl Chunk {
 
     /// Calculates the required padding when given a chunk payload of the given size.
     fn calculate_padding(payload_length: usize) -> usize {
-        (4 - (payload_length % 4) % 4)
+        (4 - (payload_length % 4)) % 4
     }
 }
 
