@@ -3,6 +3,32 @@ use std::io::{self, Read, Result, Write};
 use std::mem;
 use std::u16;
 
+macro_rules! debug_log_assert {
+    ($a:expr) => {
+        if !$a {
+            debug!("assertion failed: {} was {}", stringify!($a), $a);
+        }
+    };
+    ($a:expr, $msg:expr) => {
+        if !$a {
+            debug!($msg, stringify!($a), $a);
+        }
+    };
+}
+
+macro_rules! debug_log_eq {
+    ($a:expr, $b:expr) => {
+        if $a != $b {
+            debug!("assertion failed: {} != {}", $a, $b);
+        }
+    };
+    ($a:expr, $b:expr, $msg:expr) => {
+        if $a != $b {
+            debug!($msg, $a, $b);
+        }
+    };
+}
+
 /// An SUTP chunk.
 #[derive(Clone, Debug, Hash, Eq, PartialEq)]
 pub enum Chunk {
@@ -128,7 +154,7 @@ impl Chunk {
         let len = r.read_u16::<NetworkEndian>()?;
 
         // Ensure the list length is valid (i. e. a multiple of size_of::<u32>())
-        debug_assert_eq!(len % U32_SIZE, 0);
+        debug_log_eq!(len % U32_SIZE, 0);
 
         // You can collect an iterator of results into a result of an iterator
         let list = (0..(len / U32_SIZE))
@@ -160,8 +186,8 @@ impl Chunk {
     fn read_sack(r: &mut impl Read) -> Result<(Self, u16)> {
         let len = r.read_u16::<NetworkEndian>()?;
 
-        debug_assert!(len >= (U32_SIZE * 2));
-        debug_assert_eq!(len % U32_SIZE, 0);
+        debug_log_assert!(len >= (U32_SIZE * 2));
+        debug_log_eq!(len % U32_SIZE, 0);
 
         let ack_no = r.read_u32::<NetworkEndian>()?;
         let nak_list_len = r.read_u32::<NetworkEndian>()?;
@@ -170,9 +196,9 @@ impl Chunk {
         // the values match up.
         //
         // len is in given bytes, nak_list_len in "entries".
-        debug_assert_eq!(
+        debug_log_eq!(
             len as u32 + (2 * U32_SIZE as u32),
-            nak_list_len * U32_SIZE as u32,
+            nak_list_len * U32_SIZE as u32
         );
 
         let nak_list = (0..nak_list_len)
@@ -192,7 +218,7 @@ impl Chunk {
     fn read_security_flag(r: &mut impl Read) -> Result<(Self, u16)> {
         let len = r.read_u16::<NetworkEndian>()?;
 
-        debug_assert_eq!(len, 1);
+        debug_log_eq!(len, 1);
 
         let flag_value = r.read_u8()?;
         Ok((Chunk::SecurityFlag(flag_value != 0), 1))
@@ -219,7 +245,7 @@ impl Chunk {
 
         // Ensure we are given correct data, but otherwise discard what we've been
         // given for a robust implementation.
-        debug_assert_eq!(len, 0);
+        debug_log_eq!(len, 0);
         Self::discard_exact(r, len as u64)?;
 
         Ok((ch, len))
