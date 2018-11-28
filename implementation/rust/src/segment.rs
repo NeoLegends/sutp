@@ -452,6 +452,64 @@ mod tests {
         deserialize_flag_chunk(0x3, Chunk::Abort);
     }
 
+    #[test]
+    fn deserialize_sack_chunk() {
+        let mut data = Cursor::new(vec![
+            0x0, 0x4, 0x0, 0xc,
+            0x0, 0x0, 0x0, 0x4,
+            0x0, 0x0, 0x0, 0x6,
+            0x0, 0x0, 0x0, 0x5,
+        ]);
+
+        let chunk = Chunk::read_from(&mut data).unwrap().unwrap();
+        match chunk {
+            Chunk::Sack { ack_no, nak_list } => {
+                assert_eq!(ack_no, 4);
+                assert_eq!(nak_list.len(), 2);
+                assert_eq!(nak_list[0], 6);
+                assert_eq!(nak_list[1], 5);
+            },
+            x => panic!(format!("wrong chunk type {:?}", x)),
+        }
+    }
+
+    #[test]
+    #[should_panic]
+    fn deserialize_sack_chunk_empty() {
+        let mut data = Cursor::new(vec![
+            0x0, 0x4, 0x0, 0x0,
+        ]);
+
+        Chunk::read_from(&mut data).unwrap().unwrap();
+    }
+
+    #[test]
+    #[should_panic]
+    fn deserialize_sack_chunk_invalid_length() {
+        let mut data = Cursor::new(vec![
+            0x0, 0x4, 0x0, 0x4,
+        ]);
+
+        Chunk::read_from(&mut data).unwrap().unwrap();
+    }
+
+    #[test]
+    fn deserialize_sack_chunk_empty_nak_list() {
+        let mut data = Cursor::new(vec![
+            0x0, 0x4, 0x0, 0x4,
+            0x0, 0x0, 0x0, 0x4,
+        ]);
+
+        let chunk = Chunk::read_from(&mut data).unwrap().unwrap();
+        match chunk {
+            Chunk::Sack { ack_no, nak_list } => {
+                assert_eq!(ack_no, 4);
+                assert_eq!(nak_list.len(), 0);
+            },
+            x => panic!(format!("wrong chunk type {:?}", x)),
+        }
+    }
+
     /// Test serialization of flag chunks.
     #[test]
     fn serialize_flag_chunks() {
@@ -468,6 +526,42 @@ mod tests {
         serialize_flag_chunk(Chunk::Syn, 0x1);
         serialize_flag_chunk(Chunk::Fin, 0x2);
         serialize_flag_chunk(Chunk::Abort, 0x3);
+    }
+
+    #[test]
+    fn serialize_sack_chunk() {
+        let chunk = Chunk::Sack {
+            ack_no: 17,
+            nak_list: vec![20, 18],
+        };
+
+        let mut buf = Vec::new();
+        chunk.write_to(&mut buf).unwrap();
+
+        let expected = &[
+            0x0, 0x4, 0x0, 0xc,
+            0x0, 0x0, 0x0, 0x11,
+            0x0, 0x0, 0x0, 0x14,
+            0x0, 0x0, 0x0, 0x12,
+        ];
+        assert_eq!(&buf, expected);
+    }
+
+    #[test]
+    fn serialize_sack_chunk_empty_nak_list() {
+        let chunk = Chunk::Sack {
+            ack_no: 17,
+            nak_list: Vec::new(),
+        };
+
+        let mut buf = Vec::new();
+        chunk.write_to(&mut buf).unwrap();
+
+        let expected = &[
+            0x0, 0x4, 0x0, 0x4,
+            0x0, 0x0, 0x0, 0x11,
+        ];
+        assert_eq!(&buf, expected);
     }
 
     /// Ensure we cannot read data from nothing.
