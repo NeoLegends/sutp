@@ -136,6 +136,7 @@ impl Chunk {
             _ => unreachable!("cannot write unknown chunk"),
         }?;
 
+        // Write padding as necessary
         let padding = Self::calculate_padding(payload_length as usize);
         w.write_all(&ZEROS[..padding])?;
 
