@@ -385,4 +385,57 @@ impl Segment {
 
 #[cfg(test)]
 mod tests {
+    use std::io::{Cursor, ErrorKind};
+    use super::*;
+
+    /// Test deserialization of flag chunks.
+    #[test]
+    fn deserialize_flag_chunks() {
+        fn deserialize_flag_chunk(ty: u8, should: Chunk) {
+            let mut data = Cursor::new(vec![0x0, ty, 0x0, 0x0]);
+            assert_eq!(
+                Chunk::read_from(&mut data).unwrap().unwrap(),
+                should,
+            );
+        }
+
+        deserialize_flag_chunk(0x1, Chunk::Syn);
+        deserialize_flag_chunk(0x2, Chunk::Fin);
+        deserialize_flag_chunk(0x3, Chunk::Abort);
+    }
+
+    /// Test serialization of flag chunks.
+    #[test]
+    fn serialize_flag_chunks() {
+        fn serialize_flag_chunk(ch: Chunk, expected_type: u8) {
+            let mut buf = Cursor::new(vec![]);
+            ch.write_to(&mut buf).unwrap();
+
+            assert_eq!(
+                &buf.into_inner(),
+                &[0x0, expected_type, 0x0, 0x0],
+            );
+        }
+
+        serialize_flag_chunk(Chunk::Syn, 0x1);
+        serialize_flag_chunk(Chunk::Fin, 0x2);
+        serialize_flag_chunk(Chunk::Abort, 0x3);
+    }
+
+    /// Ensure we cannot read data from nothing.
+    #[test]
+    fn zero_input() {
+        let mut data = Cursor::new(vec![]);
+
+        match Segment::read_from(&mut data) {
+            Ok(_) => panic!("Read segment from empty data."),
+            Err(ref e) if e.kind() != ErrorKind::UnexpectedEof => panic!("Unexpected error kind"),
+            _ => {},
+        }
+        match Segment::read_from(&mut data) {
+            Ok(_) => panic!("Read chunk from empty data."),
+            Err(ref e) if e.kind() != ErrorKind::UnexpectedEof => panic!("Unexpected error kind"),
+            _ => {},
+        }
+    }
 }

@@ -1,0 +1,6 @@
+image: 'rust:latest'
+
+rust_impl:
+  stage: test
+  script:
+    - cargo test --verbose --jobs 1
