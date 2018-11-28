@@ -41,7 +41,7 @@ At the beginning of a new connection a sending timeout, maximum waiting time and
 The sending timeout determines how long a sending side waits for an acknowledegment, before sending the segment again.
 The maximum waiting time determines how long a sending side waits for an acknowledgement before the connection will be aborted.  It ultimately determines how often a certain segment can be sent again.
 The receiving timout determines how long a receiving side waits for an unsuccesfully sent segment before it negatively acknowledges it.
-The maximum waiting time SHOULD be greater than the sending timeout and the sending timeout SHOULD be greater than the roundtriptime.
+The maximum waiting time SHOULD be greater than the sending timeout and the sending timeout SHOULD be greater than the expected round-trip-time.
 
 A SUTP instance can be both sending and receiving side at the same time.
 
@@ -50,8 +50,7 @@ A SUTP instance can be both sending and receiving side at the same time.
 A segment that was incorrectly (incorrect checksum) received is discarded without any further action.
 
 The last segment's sequence number, to which all preceding segments were successfully received, is used for the cumulative acknowledgment.  If there have been subsequent segments successfully received, the segments in between that were not succesfully received yet, are now handled as unsuccessfully sent.  A timer (receiving timeout) is set for every unsuccessfully sent segment.  If it has not been succesfully received on timeout, its sequence number is added to the NAK-List.
-After every received segment containing more than chunks of this [list](#no-ACK-List) and on every timeout for an unsuccefully sent segment a SACK-CHUNK built as described above, MUST be sent to the sending SUTP.  This way segments only containing chunks of this [list](#no-ACK-List) are not directly acknowledged (to avoid ACK loops), if received correctly. But they are eventually handled as unsuccessfully sent, if incorrectly (incorrect checksum) received.
-
+For every received segment containing other chunks than those of this [list](#no-ACK-List), and on every timeout for an unsuccefully sent segment, a SACK-CHUNK built as described above, MUST be sent to the sending side.  This way segments only containing chunks of this [list](#no-ACK-List) are not directly acknowledged (to avoid ACK loops), if received correctly. But they are eventually handled as unsuccessfully sent, if incorrectly (incorrect checksum, timeout) received.
 
 ### Sending Side
 
@@ -60,7 +59,6 @@ The sending side MUST have a segment ready to be sent again until it has been ac
 For a segment only containing chunks of this [list](#no-ACK-List) a timer (sending timer) is set, if no negative acknowledement has been received on timeout, the segment is indirectly acknowleded.
 For every other sent segment two timers (sending timeout and maximum waiting time) are set.  If the maximum waiting time timeout occurs before the segment has been acknowledged, the connection MUST be aborted.
 A segment must be sent again if no acknowledement has been received before the sending timeout occurs or when a negative acknowledgement was received.
-
 
 Every segment is directly/indirectly negatively or positevely acknowledged in an appropriate time.  If negatively acknowledged or not acknowledged at all, the segment is sent again, therefore a reliable communication is guarenteed.
 
@@ -264,7 +262,7 @@ If A wishes to send data `d` to B it must:
     - If `tAbort` elapses, A MUST [`Abort the session`](#action-abort-session) and report the error to the upper layer
 1. A [`Sends a segment`](#action-send-segment) to B containing the compiled payload chunk
 1. Set a timer `tTimeout`.  The authors recommend a value of 1 second for all types of connections.
-    - If `tTimeout` elapses, continue with step 4.
+    - If `tTimeout` elapses, continue with step 5.
 1. Wait for B's answer.
     - If it contains a SACK-Chunk, see if it ACKs or NAKs the previously sent segment.
     - If not, proceed with step 7.
@@ -279,7 +277,7 @@ When A receives a segment `s` containing payload data from B it must:
     - If it does not, [`Send a segment`](#action-send-segment) containing a NAK to B and return.
 1. Check whether the CRC-32 sum matches
     - If it does not, discard the segment and continue with step 7
-1. Mark `s` as successfully received 
+1. Mark `s` as successfully received
 1. Check if `s` has the expected next sequence number
     - If not, set timer `rTimeout` for the missing segments. If `rTimeout` elapses before those segments are successfully received mark them as unsuccessfully sent
 1. Subtract the size of `s` from the current window size
