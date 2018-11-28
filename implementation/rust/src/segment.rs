@@ -418,11 +418,28 @@ mod tests {
     #[test]
     fn deserialize_flag_chunks() {
         fn deserialize_flag_chunk(ty: u8, should: Chunk) {
+            // Check the base case
             let mut data = Cursor::new(vec![0x0, ty, 0x0, 0x0]);
             assert_eq!(
                 Chunk::read_from(&mut data).unwrap().unwrap(),
                 should,
             );
+
+            // Now check if we correctly parse (technically) incorrect lengths.
+            // The following should all parse equivalent, since we're padding
+            // to multiples of 32 bits.
+            let data = vec![
+                Cursor::new(vec![0x0, ty, 0x0, 0x1, 0x0, 0x0, 0x0, 0x0]),
+                Cursor::new(vec![0x0, ty, 0x0, 0x2, 0x0, 0x0, 0x0, 0x0]),
+                Cursor::new(vec![0x0, ty, 0x0, 0x3, 0x0, 0x0, 0x0, 0x0]),
+                Cursor::new(vec![0x0, ty, 0x0, 0x4, 0x0, 0x0, 0x0, 0x0]),
+            ];
+            for mut cur in data.into_iter() {
+                assert_eq!(
+                    Chunk::read_from(&mut cur).unwrap().unwrap(),
+                    should,
+                );
+            }
         }
 
         deserialize_flag_chunk(0x1, Chunk::Syn);
