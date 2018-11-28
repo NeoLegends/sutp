@@ -84,6 +84,9 @@ const ZEROS: [u8; 3] = [0; 3];
 impl Chunk {
     /// Reads a chunk from the given reader.
     ///
+    /// It is strongly advised to pass a buffering `io.Read` implementation
+    /// since the parser will issue lots of small calls to `read`.
+    ///
     /// The function returns `None`, when the reader has gone EOF while parsing
     /// the chunk type. This usually indicates that we have reached the end of the
     /// chunk list, and not an unexpected EOF. Otherwise returns `Some`.
@@ -115,6 +118,9 @@ impl Chunk {
     }
 
     /// Writes the chunk to the given writer.
+    ///
+    /// It is strongly advised to pass a buffering `io.Write` implementation
+    /// since the serializer will issue lots of small calls to `write`.
     pub fn write_to(&self, w: &mut impl Write) -> Result<()> {
         let payload_length = match self {
             Chunk::Abort => Self::write_abrt(w),
