@@ -148,6 +148,7 @@ Each instance of the protocol has the following properties:
 - Sequence number of the other side `sB` of type `integer`
 - Destination address `addr` of type `ip`
 - Source and destination port numbers `srcPort` and `dstPort` of type `integer`
+- List of sequence numbers ACKed `ackList` or NAKed `nakList`
 
 ### Abort the session <a name="action-abort-session"></a>
 
@@ -188,6 +189,21 @@ Given:
 1. Let `x` be the result of [`Get a new sequence number`](#action-incr-sequence).
 1. Let `buf` be the result of [`Serialize a segment`](#action-serialize-segment) using sequence number `x`, receiving window `r` and list of chunks `ch`.
 1. [`Transfer a segment`](#action-transfer-segment) using binary buffer `buf`, destination address `addr` and destination port `dstPort`.
+
+### Send a SACK <a name="action-send-sack"></a>
+
+Given:
+- Receiving window `r` of type `integer`
+- Current sequence number `sA` of type `integer`
+- Destination address `addr` of type `ip`
+- Source and destination port numbers `srcPort` and `dstPort` of type `integer`
+- List of sequence numbers ACKed `ackList` or NAKed `nakList`
+
+...sending a SACK segment is done as follows:
+
+1. Let `l` be the lowest sequence number in `ackList`, to which all preceeding sequence numbers are also ACKed
+1. Compile a SACK chunk `ch` with `l` and the full `nakList`
+1. [`Send a segment`](#action-send-segment) containing `ch`
 
 ### Serialize a segment <a name="action-serialize-segment"></a>
 
@@ -274,18 +290,16 @@ If A wishes to send data `d` to B it must:
 When A receives a segment `s` containing payload data from B it must:
 
 1. Check whether A's current remaining window size allows processing `s`
-    - If it does not, [`Send a segment`](#action-send-segment) containing a NAK to B and return.
+    - If it does not tag the segment with NAK, discard the data, and return.
 1. Check whether the CRC-32 sum matches
     - If it does not, discard the segment and continue with step 7
 1. Mark `s` as successfully received
-1. Check if `s` has the expected next sequence number
-    - If not, set timer `rTimeout` for the missing segments. If `rTimeout` elapses before those segments are successfully received mark them as unsuccessfully sent
 1. Subtract the size of `s` from the current window size
 1. Check if the window size has become close to 0 (by some implementation-specific margin)
     - If it does, immediately [`Send a segment`](#action-send-segment) ACKing `s` and potentially other successfully received segments and report the current window size.  Return
     - If it does not, continue normally
 1. Apply a [sampling mechanism](http://reactivex.io/documentation/operators/sample.html) for all events leading up to here.  The authors recommend an interval of about 200ms
-1. [`Send a segment`](#action-send-segment) containing a SACK chunk for all outstanding segments to be ACKed and NAKed.
+1. [`Send a SACK`](#action-send-sack) for all outstanding segments to be ACKed and NAKed.
 
 ### Connection Shutdown
 
