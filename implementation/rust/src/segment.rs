@@ -429,12 +429,14 @@ mod tests {
 
         match Segment::read_from(&mut data) {
             Ok(_) => panic!("Read segment from empty data."),
-            Err(ref e) if e.kind() != ErrorKind::UnexpectedEof => panic!("Unexpected error kind"),
+            Err(ref e) if e.kind() != ErrorKind::UnexpectedEof =>
+                panic!("Unexpected error kind"),
             _ => {},
         }
         match Segment::read_from(&mut data) {
             Ok(_) => panic!("Read chunk from empty data."),
-            Err(ref e) if e.kind() != ErrorKind::UnexpectedEof => panic!("Unexpected error kind"),
+            Err(ref e) if e.kind() != ErrorKind::UnexpectedEof =>
+                panic!("Unexpected error kind"),
             _ => {},
         }
     }
