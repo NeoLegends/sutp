@@ -294,6 +294,8 @@ When A receives a segment `s` containing payload data from B it must:
 1. Check whether the CRC-32 sum matches
     - If it does not, discard the segment and continue with step 7
 1. Mark `s` as successfully received
+    1. Remove it from the NAK list
+    1. Add it to the ACK list
 1. Subtract the size of `s` from the current window size
 1. Check if the window size has become close to 0 (by some implementation-specific margin)
     - If it does, immediately [`Send a segment`](#action-send-segment) ACKing `s` and potentially other successfully received segments and report the current window size.  Return
