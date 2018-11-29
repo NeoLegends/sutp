@@ -50,6 +50,8 @@ pub enum Chunk {
     Sack(u32, Vec<u32>),
 
     /// Compression negotiation chunk.
+    ///
+    /// Contains a list of compression algorithms.
     CompressionNegotiation(Vec<CompressionAlgorithm>),
 
     /// Security flag chunk.
@@ -58,6 +60,8 @@ pub enum Chunk {
     SecurityFlag(bool),
 
     /// Unknown chunk with arbitrary data.
+    ///
+    /// The first value is the type, the second value the payload data.
     Unknown(u16, Vec<u8>),
 }
 
