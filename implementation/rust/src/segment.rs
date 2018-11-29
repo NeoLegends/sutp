@@ -421,6 +421,34 @@ mod tests {
     use std::io::{Cursor, ErrorKind};
     use super::*;
 
+    #[test]
+    fn deserialize_compression_negotiation() {
+        let mut data = Cursor::new(vec![
+            0x0, 0xa0, 0x0, 0xc,
+            0x0, 0x0, 0x0, 0x1,
+            0x0, 0x0, 0x0, 0xa,
+            0x0, 0x0, 0x0, 0x4,
+        ]);
+
+        assert_eq!(
+            Chunk::read_from(&mut data).unwrap().unwrap(),
+            Chunk::CompressionNegotiation(vec![
+                CompressionAlgorithm::Gzip,
+                CompressionAlgorithm::Unknown(10),
+                CompressionAlgorithm::Snappy,
+            ]),
+        );
+    }
+
+    #[test]
+    fn deserialize_compression_negotiation_zero_length() {
+        let mut data = Cursor::new(vec![0x0, 0xa0, 0x0, 0x0]);
+        assert_eq!(
+            Chunk::read_from(&mut data).unwrap().unwrap(),
+            Chunk::CompressionNegotiation(Vec::new()),
+        );
+    }
+
     /// Test deserialization of flag chunks.
     #[test]
     fn deserialize_flag_chunks() {
@@ -452,6 +480,31 @@ mod tests {
         deserialize_flag_chunk(0x1, Chunk::Syn);
         deserialize_flag_chunk(0x2, Chunk::Fin);
         deserialize_flag_chunk(0x3, Chunk::Abort);
+    }
+
+    #[test]
+    fn deserialize_payload() {
+        let mut data = Cursor::new(vec![
+            0x0, 0x0, 0x0, 0x4,
+            0x1, 0x2, 0x3, 0x4,
+        ]);
+
+        assert_eq!(
+            Chunk::read_from(&mut data).unwrap().unwrap(),
+            Chunk::Payload(vec![0x1, 0x2, 0x3, 0x4]),
+        );
+    }
+
+    #[test]
+    fn deserialize_payload_empty() {
+        let mut data = Cursor::new(vec![
+            0x0, 0x0, 0x0, 0x0,
+        ]);
+
+        assert_eq!(
+            Chunk::read_from(&mut data).unwrap().unwrap(),
+            Chunk::Payload(Vec::new()),
+        );
     }
 
     #[test]
@@ -512,6 +565,37 @@ mod tests {
         }
     }
 
+    #[test]
+    fn serialize_compression_negotiation() {
+        let mut buf = Vec::new();
+        let algorithms = vec![
+            CompressionAlgorithm::Snappy,
+            CompressionAlgorithm::Gzip,
+        ];
+
+        Chunk::CompressionNegotiation(algorithms)
+            .write_to(&mut buf)
+            .unwrap();
+
+        let expected = &[
+            0x0, 0xa0, 0x0, 0x8,
+            0x0, 0x0, 0x0, 0x4,
+            0x0, 0x0, 0x0, 0x1,
+        ];
+        assert_eq!(&buf, expected);
+    }
+
+    #[test]
+    fn serialize_compression_negotiation_empty() {
+        let mut buf = Vec::new();
+        Chunk::CompressionNegotiation(Vec::new())
+            .write_to(&mut buf)
+            .unwrap();
+
+        let expected = &[0x0, 0xa0, 0x0, 0x0];
+        assert_eq!(&buf, expected);
+    }
+
     /// Test serialization of flag chunks.
     #[test]
     fn serialize_flag_chunks() {
@@ -528,6 +612,36 @@ mod tests {
         serialize_flag_chunk(Chunk::Syn, 0x1);
         serialize_flag_chunk(Chunk::Fin, 0x2);
         serialize_flag_chunk(Chunk::Abort, 0x3);
+    }
+
+    #[test]
+    fn serialize_payload() {
+        let mut buf = Vec::new();
+        let payload = vec![
+            0x0, 0x0, 0x1, 0x1,
+        ];
+
+        Chunk::Payload(payload)
+            .write_to(&mut buf)
+            .unwrap();
+
+        let expected = &[
+            0x0, 0x0, 0x0, 0x4,
+            0x0, 0x0, 0x1, 0x1,
+        ];
+        assert_eq!(&buf, expected);
+    }
+
+    #[test]
+    fn serialize_payload_empty() {
+        let mut buf = Vec::new();
+
+        Chunk::Payload(Vec::new())
+            .write_to(&mut buf)
+            .unwrap();
+
+        let expected = &[0x0, 0x0, 0x0, 0x0];
+        assert_eq!(&buf, expected);
     }
 
     #[test]
