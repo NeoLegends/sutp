@@ -517,15 +517,12 @@ mod tests {
         ]);
 
         let chunk = Chunk::read_from(&mut data).unwrap().unwrap();
-        match chunk {
-            Chunk::Sack { ack_no, nak_list } => {
-                assert_eq!(ack_no, 4);
-                assert_eq!(nak_list.len(), 2);
-                assert_eq!(nak_list[0], 6);
-                assert_eq!(nak_list[1], 5);
-            },
-            x => panic!(format!("wrong chunk type {:?}", x)),
-        }
+        let expected = Chunk::Sack {
+            ack_no: 4,
+            nak_list: vec![6, 5],
+        };
+
+        assert_eq!(chunk, expected);
     }
 
     #[test]
