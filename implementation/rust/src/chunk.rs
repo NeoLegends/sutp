@@ -45,10 +45,9 @@ pub enum Chunk {
     Abort,
 
     /// SACK chunk.
-    Sack {
-        ack_no: u32,
-        nak_list: Vec<u32>,
-    },
+    ///
+    /// Contains the ACK number and the NAK list.
+    Sack(u32, Vec<u32>),
 
     /// Compression negotiation chunk.
     CompressionNegotiation(Vec<CompressionAlgorithm>),
@@ -120,7 +119,7 @@ impl Chunk {
                 Self::write_compression_negotiation(list, w),
             Chunk::Fin => Self::write_fin(w),
             Chunk::Payload(ref data) => Self::write_payload(data, w),
-            Chunk::Sack { ref ack_no, ref nak_list } =>
+            Chunk::Sack(ack_no, nak_list) =>
                 Self::write_sack(*ack_no, nak_list, w),
             Chunk::SecurityFlag(is_insecure) =>
                 Self::write_security_flag(*is_insecure, w),
@@ -194,12 +193,7 @@ impl Chunk {
             .map(|_| r.read_u32::<NetworkEndian>())
             .collect::<Result<_>>()?;
 
-        let chunk = Chunk::Sack {
-            ack_no: ack_no,
-            nak_list: nak_list,
-        };
-
-        Ok((chunk, len))
+        Ok((Chunk::Sack(ack_no, nak_list), len))
     }
 
     /// Reads a security flag chunk.
@@ -475,10 +469,7 @@ mod tests {
         ]);
 
         let chunk = Chunk::read_from(&mut data).unwrap().unwrap();
-        let expected = Chunk::Sack {
-            ack_no: 4,
-            nak_list: vec![6, 5],
-        };
+        let expected = Chunk::Sack(4, vec![6, 5]);
 
         assert_eq!(chunk, expected);
     }
@@ -511,13 +502,9 @@ mod tests {
         ]);
 
         let chunk = Chunk::read_from(&mut data).unwrap().unwrap();
-        match chunk {
-            Chunk::Sack { ack_no, nak_list } => {
-                assert_eq!(ack_no, 4);
-                assert_eq!(nak_list.len(), 0);
-            },
-            x => panic!(format!("wrong chunk type {:?}", x)),
-        }
+        let expected = Chunk::Sack(4, Vec::new());
+
+        assert_eq!(chunk, expected);
     }
 
     #[test]
@@ -601,10 +588,7 @@ mod tests {
 
     #[test]
     fn serialize_sack_chunk() {
-        let chunk = Chunk::Sack {
-            ack_no: 17,
-            nak_list: vec![20, 18],
-        };
+        let chunk = Chunk::Sack(17, vec![20, 18]);
 
         let mut buf = Vec::new();
         chunk.write_to(&mut buf).unwrap();
@@ -620,10 +604,7 @@ mod tests {
 
     #[test]
     fn serialize_sack_chunk_empty_nak_list() {
-        let chunk = Chunk::Sack {
-            ack_no: 17,
-            nak_list: Vec::new(),
-        };
+        let chunk = Chunk::Sack(17, Vec::new());
 
         let mut buf = Vec::new();
         chunk.write_to(&mut buf).unwrap();
