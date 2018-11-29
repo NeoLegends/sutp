@@ -280,6 +280,8 @@ impl Chunk {
         let payload_size = list.len() * (U32_SIZE as usize);
         assert!(payload_size <= u16::MAX as usize);
 
+        Self::write_chunk_header(0xa0, payload_size as u16, w)?;
+
         for &alg in list {
             w.write_u32::<NetworkEndian>(alg.into())?;
         }
