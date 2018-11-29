@@ -530,7 +530,7 @@ mod tests {
 
     #[test]
     #[should_panic]
-    fn deserialize_sack_chunk_empty() {
+    fn deserialize_sack_chunk_zero_length() {
         let mut data = Cursor::new(vec![
             0x0, 0x4, 0x0, 0x0,
         ]);
