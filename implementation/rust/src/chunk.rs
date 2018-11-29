@@ -376,7 +376,7 @@ impl From<CompressionAlgorithm> for u32 {
 
 #[cfg(test)]
 mod tests {
-    use std::io::{Cursor, ErrorKind};
+    use std::io::Cursor;
     use super::*;
 
     #[test]
@@ -639,12 +639,6 @@ mod tests {
     #[test]
     fn zero_input() {
         let mut data = Cursor::new(vec![]);
-
-        match Chunk::read_from(&mut data) {
-            Ok(_) => panic!("Read chunk from empty data."),
-            Err(ref e) if e.kind() != ErrorKind::UnexpectedEof =>
-                panic!("Unexpected error kind"),
-            _ => {},
-        }
+        assert!(Chunk::read_from(&mut data).unwrap().is_none());
     }
 }
