@@ -5,4 +5,5 @@ authors = ["Moritz Gunz <moritz.gunz@gmail.com>"]
 
 [dependencies]
 byteorder = "1.2.7"
+flate2 = "1.0.5"
 log = "0.4.6"
