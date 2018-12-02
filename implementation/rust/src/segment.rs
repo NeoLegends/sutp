@@ -1,3 +1,6 @@
+//! This module implements the data format of segments as specified in
+//! https://laboratory.comsys.rwth-aachen.de/sutp/data-format/blob/master/README.md.
+
 use byteorder::{NetworkEndian, ReadBytesExt, WriteBytesExt};
 use chunk::Chunk;
 use std::io::{Read, Result, Write};
