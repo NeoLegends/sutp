@@ -122,10 +122,10 @@ impl Chunk {
     pub fn write_to(&self, w: &mut impl Write) -> Result<()> {
         let payload_length = match self {
             Chunk::Abort => Self::write_abrt(w),
-            Chunk::CompressionNegotiation(ref list) =>
+            Chunk::CompressionNegotiation(list) =>
                 Self::write_compression_negotiation(list, w),
             Chunk::Fin => Self::write_fin(w),
-            Chunk::Payload(ref data) => Self::write_payload(data, w),
+            Chunk::Payload(data) => Self::write_payload(data, w),
             Chunk::Sack(ack_no, nak_list) =>
                 Self::write_sack(*ack_no, nak_list, w),
             Chunk::SecurityFlag(is_insecure) =>
