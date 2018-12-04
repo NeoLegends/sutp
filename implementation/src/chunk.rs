@@ -54,6 +54,72 @@ const U32_SIZE: u16 = mem::size_of::<u32>() as u16;
 const ZEROS: [u8; 3] = [0; 3];
 
 impl Chunk {
+    /// Returns whether the chunk is an ABRT chunk.
+    pub fn is_abrt(&self) -> bool {
+        match self {
+            Chunk::Abort => true,
+            _ => false,
+        }
+    }
+
+    /// Returns whether the chunk is a compression negotiation chunk.
+    pub fn is_compression_negotiation(&self) -> bool {
+        match self {
+            Chunk::CompressionNegotiation(_) => true,
+            _ => false,
+        }
+    }
+
+    /// Returns whether the chunk is a FIN chunk.
+    pub fn is_fin(&self) -> bool {
+        match self {
+            Chunk::Fin => true,
+            _ => false,
+        }
+    }
+
+    /// Returns whether the chunk is a payload chunk.
+    pub fn is_payload(&self) -> bool {
+        match self {
+            Chunk::Payload(_) => true,
+            _ => false,
+        }
+    }
+
+    /// Returns whether the chunk is a SACK chunk.
+    pub fn is_sack(&self) -> bool {
+        match self {
+            Chunk::Sack(_, _) => true,
+            _ => false,
+        }
+    }
+
+    /// Returns whether the chunk is a security flag chunk.
+    pub fn is_security_flag(&self) -> bool {
+        match self {
+            Chunk::SecurityFlag(_) => true,
+            _ => false,
+        }
+    }
+
+    /// Returns whether the chunk is a SYN chunk.
+    pub fn is_syn(&self) -> bool {
+        match self {
+            Chunk::Syn => true,
+            _ => false,
+        }
+    }
+
+    /// Returns whether the chunk is an unknown chunk.
+    pub fn is_unknown(&self) -> bool {
+        match self {
+            Chunk::Unknown(_, _) => true,
+            _ => false,
+        }
+    }
+}
+
+impl Chunk {
     /// Reads a chunk from the given reader.
     ///
     /// It is strongly advised to pass a buffering `io.Read` implementation
