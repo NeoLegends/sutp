@@ -1,7 +1,8 @@
 use bytes::{BufMut, BytesMut};
-use segment::Segment;
 use std::io::{self, Cursor, Error, ErrorKind, Read};
 use tokio::codec::{Decoder, Encoder};
+
+use segment::Segment;
 
 /// A wrapper around an io::Read that counts how many bytes were read.
 #[derive(Debug)]
