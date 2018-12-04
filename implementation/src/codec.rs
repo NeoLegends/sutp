@@ -4,38 +4,17 @@ use tokio::codec::{Decoder, Encoder};
 
 use segment::Segment;
 
-/// A wrapper around an io::Read that counts how many bytes were read.
-#[derive(Debug)]
-struct CountingReader<R> {
-    count: usize,
-    reader: R,
-}
-
 /// An implementation of a (de)serializer of SUTP segments.
 ///
 /// This mostly just wraps `Segment::read_from` and `Segment::write_to`.
 #[derive(Copy, Clone, Debug, Hash, Eq, PartialEq)]
 pub struct SutpCodec;
 
-impl<R> CountingReader<R> {
-    pub fn new(reader: R) -> Self {
-        CountingReader {
-            count: 0,
-            reader: reader,
-        }
-    }
-
-    pub fn count(&self) -> usize {
-        self.count
-    }
-}
-
-impl<R: Read> Read for CountingReader<R> {
-    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        let read = self.reader.read(buf)?;
-        self.count += read;
-        Ok(read)
-    }
+/// A wrapper around an io::Read that counts how many bytes were read.
+#[derive(Debug)]
+struct CountingReader<R> {
+    count: usize,
+    reader: R,
 }
 
 impl Decoder for SutpCodec {
@@ -75,6 +54,27 @@ impl Encoder for SutpCodec {
         dst: &mut BytesMut,
     ) -> Result<(), Self::Error> {
         item.write_to_with_crc32(&mut dst.writer())
+    }
+}
+
+impl<R> CountingReader<R> {
+    pub fn new(reader: R) -> Self {
+        CountingReader {
+            count: 0,
+            reader: reader,
+        }
+    }
+
+    pub fn count(&self) -> usize {
+        self.count
+    }
+}
+
+impl<R: Read> Read for CountingReader<R> {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        let read = self.reader.read(buf)?;
+        self.count += read;
+        Ok(read)
     }
 }
 
