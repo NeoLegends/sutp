@@ -6,6 +6,9 @@ use std::io::{self, Read, Result, Write};
 use std::mem;
 use std::u16;
 
+// TODO: Refactor this to use the Bytes struct instead of reading from
+// an io::Read for better efficiency (because we can save the copying).
+
 /// An SUTP chunk.
 #[derive(Clone, Debug, Hash, Eq, PartialEq)]
 pub enum Chunk {
