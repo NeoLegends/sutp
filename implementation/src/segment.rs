@@ -4,7 +4,7 @@
 use byteorder::{NetworkEndian, ReadBytesExt, WriteBytesExt};
 use chunk::Chunk;
 use flate2::{CrcReader, CrcWriter};
-use std::io::{Error, ErrorKind, Read, Result, Write};
+use std::io::{self, Error, ErrorKind, Read, Write};
 
 /// An SUTP segment.
 #[derive(Clone, Debug, Default, Hash, Eq, PartialEq)]
@@ -14,12 +14,31 @@ pub struct Segment {
     pub window_size: u32,
 }
 
+/// An error that can occur during segment validation.
+#[derive(Copy, Clone, Debug, Eq, Hash, PartialEq)]
+pub enum ValidationError {
+    /// There is a conflict within the chunk's meanings
+    ///
+    /// E. g. a SYN and an ABRT together in the same chunk don't make sense.
+    Conflict,
+
+    /// There is illegal chunk duplication.
+    DuplicatedChunks {
+        abrt: bool,
+        fin: bool,
+        syn: bool,
+    },
+
+    /// The segment does not contain any chunks.
+    NoChunks,
+}
+
 impl Segment {
     /// Reads a segment from the given reader.
     ///
     /// It is strongly advised to pass a buffering `io.Read` implementation
     /// since the parser will issue lots of small calls to `read`.
-    pub fn read_from(r: &mut impl Read) -> Result<Segment> {
+    pub fn read_from(r: &mut impl Read) -> io::Result<Segment> {
         let sq_no = r.read_u32::<NetworkEndian>()?;
         let window_size = r.read_u32::<NetworkEndian>()?;
 
@@ -39,7 +58,7 @@ impl Segment {
     ///
     /// It is strongly advised to pass a buffering `io.Read` implementation
     /// since the parser will issue lots of small calls to `read`.
-    pub fn read_from_with_crc32(r: &mut impl Read) -> Result<Segment> {
+    pub fn read_from_with_crc32(r: &mut impl Read) -> io::Result<Segment> {
         let mut crc_reader = CrcReader::new(r);
         let segment = Self::read_from(&mut crc_reader)?;
 
@@ -60,11 +79,32 @@ impl Segment {
         Ok(segment)
     }
 
+    /// Validates the segment's contents.
+    pub fn validate(&self) -> Result<(), Vec<ValidationError>> {
+        let mut errors = Vec::new();
+
+        if self.chunks.is_empty() {
+            errors.push(ValidationError::NoChunks);
+        }
+        if let Some(e) = self.check_illegal_duplication() {
+            errors.push(e);
+        }
+        if let Some(e) = self.check_conflicts() {
+            errors.push(e);
+        }
+
+        if errors.is_empty() {
+            Ok(())
+        } else {
+            Err(errors)
+        }
+    }
+
     /// Writes the segment to the given writer.
     ///
     /// It is strongly advised to pass a buffering `io.Write` implementation
     /// since the serializer will issue lots of small calls to `write`.
-    pub fn write_to(&self, w: &mut impl Write) -> Result<()> {
+    pub fn write_to(&self, w: &mut impl Write) -> io::Result<()> {
         w.write_u32::<NetworkEndian>(self.seq_no)?;
         w.write_u32::<NetworkEndian>(self.window_size)?;
 
@@ -79,7 +119,7 @@ impl Segment {
     ///
     /// It is strongly advised to pass a buffering `io.Write` implementation
     /// since the serializer will issue lots of small calls to `write`.
-    pub fn write_to_with_crc32(&self, w: &mut impl Write) -> Result<()> {
+    pub fn write_to_with_crc32(&self, w: &mut impl Write) -> io::Result<()> {
         let mut crc_writer = CrcWriter::new(w);
         self.write_to(&mut crc_writer)?;
 
@@ -87,6 +127,46 @@ impl Segment {
         crc_writer.into_inner().write_u32::<NetworkEndian>(crc_sum)?;
 
         Ok(())
+    }
+
+    /// Checks whether the segment contains chunk conflicts.
+    fn check_conflicts(&self) -> Option<ValidationError> {
+        let contains_abrt = self.chunks.iter()
+            .any(|ch| ch.is_abrt());
+        let all_abort = self.chunks.iter()
+            .all(|ch| ch.is_abrt());
+
+        if contains_abrt && !all_abort {
+            Some(ValidationError::Conflict)
+        } else {
+            None
+        }
+    }
+
+    /// Checks whether the segment contains illegal duplication and returns an
+    /// appropriate error.
+    ///
+    /// For example, flag chunks cannot be duplicated to avoid ambiguities.
+    fn check_illegal_duplication(&self) -> Option<ValidationError> {
+        let abrt_count = self.chunks.iter()
+            .filter(|ch| ch.is_abrt())
+            .count();
+        let fin_count = self.chunks.iter()
+            .filter(|ch| ch.is_fin())
+            .count();
+        let syn_count = self.chunks.iter()
+            .filter(|ch| ch.is_syn())
+            .count();
+
+        if abrt_count > 0 || fin_count > 0 || syn_count > 0 {
+            Some(ValidationError::DuplicatedChunks {
+                abrt: abrt_count > 0,
+                fin: fin_count > 0,
+                syn: syn_count > 0,
+            })
+        } else {
+            None
+        }
     }
 }
 
