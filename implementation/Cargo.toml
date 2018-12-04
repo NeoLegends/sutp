@@ -5,5 +5,8 @@ authors = ["Moritz Gunz <moritz.gunz@gmail.com>"]
 
 [dependencies]
 byteorder = "1.2.7"
+bytes = "0.4.11"
 flate2 = "1.0.5"
+futures = "0.1.25"
 log = "0.4.6"
+tokio = "0.1.13"
