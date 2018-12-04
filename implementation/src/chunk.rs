@@ -6,32 +6,6 @@ use std::io::{self, Read, Result, Write};
 use std::mem;
 use std::u16;
 
-macro_rules! debug_log_assert {
-    ($a:expr) => {
-        if !$a {
-            debug!("assertion failed: {} was {}", stringify!($a), $a);
-        }
-    };
-    ($a:expr, $msg:expr) => {
-        if !$a {
-            debug!($msg, stringify!($a), $a);
-        }
-    };
-}
-
-macro_rules! debug_log_eq {
-    ($a:expr, $b:expr) => {
-        if $a != $b {
-            debug!("assertion failed: {} != {}", $a, $b);
-        }
-    };
-    ($a:expr, $b:expr, $msg:expr) => {
-        if $a != $b {
-            debug!($msg, $a, $b);
-        }
-    };
-}
-
 /// An SUTP chunk.
 #[derive(Clone, Debug, Hash, Eq, PartialEq)]
 pub enum Chunk {
