@@ -53,6 +53,7 @@ pub enum CompressionAlgorithm {
 const U32_SIZE: u16 = mem::size_of::<u32>() as u16;
 const ZEROS: [u8; 3] = [0; 3];
 
+#[allow(dead_code)]
 impl Chunk {
     /// Returns whether the chunk is an ABRT chunk.
     pub fn is_abrt(&self) -> bool {
