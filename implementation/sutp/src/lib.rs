@@ -18,16 +18,21 @@ mod stream;
 pub use listener::{Incoming, SutpListener};
 pub use stream::SutpStream;
 
+/// Some useful extensions to `Result`.
 trait ResultExt<T, E> {
     /// Allows mutable transformation on the value, without requiring the value
     /// to be returned.
     ///
-    ///  Shorthand for
-    /// ```
-    /// result.and_then(|v| {
+    /// This is a shorthand for:
+    ///
+    /// ```rust
+    /// # let result: Result<usize, ()> = Ok(5);
+    /// # fn do_something(v: &mut usize) -> Result<usize, ()> { Ok(*v) }
+    ///
+    /// result.and_then(|mut v| {
     ///     do_something(&mut v)?;
     ///     Ok(v)
-    /// })
+    /// });
     /// ```
     fn inspect_mut(self, f: impl FnOnce(&mut T) -> Result<(), E>) -> Result<T, E>;
 }
