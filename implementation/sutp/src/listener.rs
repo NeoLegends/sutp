@@ -291,7 +291,9 @@ impl Future for Driver {
                 // and actually initialize the new connection.
 
                 if maybe_segment.is_err() {
+                    trace!("discarding segment because its invalid");
                     self.new_conn = Some(new_conn);
+
                     continue;
                 }
 
@@ -299,7 +301,9 @@ impl Future for Driver {
                 let segment = maybe_segment.unwrap();
 
                 if !segment.is_syn1() {
+                    trace!("discarding init segment because it's not SYN->");
                     self.new_conn = Some(new_conn);
+
                     continue;
                 }
 
