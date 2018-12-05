@@ -29,7 +29,7 @@ pub struct ValidationError {
 /// A specific segment validation issue.
 #[derive(Copy, Clone, Debug, Eq, Hash, PartialEq)]
 pub enum Issue {
-    /// There is a conflict within the chunk's meanings
+    /// There is a conflict within the chunk's meanings.
     ///
     /// E. g. a SYN and an ABRT together in the same chunk don't make sense.
     Conflict,
