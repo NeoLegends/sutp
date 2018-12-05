@@ -1,6 +1,8 @@
-# SUTP-rust
+# SUTP
 
-A demo (library) implementation to show how segment parsing would be done in Rustlang.
+The reference implementation of SUTP written in Rustlang.
+
+Uses asynchronous I/O based on the tokio stack.
 
 ## Compiling
 
