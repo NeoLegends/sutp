@@ -15,6 +15,7 @@ use tokio::{
     net::udp::UdpSocket,
 };
 
+use ::ResultExt;
 use segment::Segment;
 use stream::SutpStream;
 
@@ -304,11 +305,7 @@ impl Future for Driver {
 
                 // Create sending socket and bind it to the remote address
                 let maybe_sock = UdpSocket::bind(&addr)
-                    .and_then(|s| {
-                        s.connect(&addr)?;
-                        Ok(s)
-                    });
-
+                    .inspect_mut(|s| s.connect(&addr));
                 let sock = match maybe_sock {
                     Ok(sock) => sock,
                     Err(e) => hard_io_err!(self, e),

@@ -17,3 +17,26 @@ mod stream;
 
 pub use listener::{Incoming, SutpListener};
 pub use stream::SutpStream;
+
+trait ResultExt<T, E> {
+    /// Allows mutable transformation on the value, without requiring the value
+    /// to be returned.
+    ///
+    ///  Shorthand for
+    /// ```
+    /// result.and_then(|v| {
+    ///     do_something(&mut v)?;
+    ///     Ok(v)
+    /// })
+    /// ```
+    fn inspect_mut(self, f: impl FnOnce(&mut T) -> Result<(), E>) -> Result<T, E>;
+}
+
+impl<T, E> ResultExt<T, E> for Result<T, E> {
+    fn inspect_mut(self, f: impl FnOnce(&mut T) -> Result<(), E>) -> Self {
+        self.and_then(|mut val| {
+            f(&mut val)?;
+            Ok(val)
+        })
+    }
+}

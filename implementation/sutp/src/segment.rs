@@ -10,6 +10,8 @@ use std::{
     io::{self, Error, ErrorKind, Read, Write}
 };
 
+use ::ResultExt;
+
 /// An SUTP segment.
 #[derive(Clone, Debug, Default, Hash, Eq, PartialEq)]
 pub struct Segment {
@@ -191,11 +193,9 @@ impl Segment {
     /// since the parser will issue lots of small calls to `read`.
     pub fn read_from_and_validate(r: &mut impl Read) -> io::Result<Segment> {
         Self::read_from_with_crc32(r)
-            .and_then(|segment| {
+            .inspect_mut(|segment| {
                 segment.validate()
-                    .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
-
-                Ok(segment)
+                    .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
             })
     }
 
