@@ -446,6 +446,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "sutp-futures"
+version = "0.1.0"
+dependencies = [
+ "futures 0.1.25 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
 name = "tokio"
 version = "0.1.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"

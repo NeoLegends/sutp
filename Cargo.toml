@@ -1,4 +1,5 @@
 [workspace]
 members = [
-    "implementation/sutp"
+    "implementation/sutp",
+    "implementation/sutp-futures"
 ]
