@@ -173,21 +173,6 @@ impl SutpListener {
     }
 }
 
-/// DRY-macro for hard I/O errors within the driver.
-///
-/// Attempts to send the error via the contained io_err channel
-/// to the listener and shuts down the driver.
-macro_rules! hard_io_err {
-    ($this:ident, $err:expr) => {{
-        let _ = $this.io_err.take()
-            .expect("polling after I/O error")
-            .send($err);
-
-        // Shutdown the driver by completing the future
-        return Ok(Async::Ready(()));
-    }};
-}
-
 impl Driver {
     /// Creates a new driver.
     pub fn new(
@@ -222,6 +207,21 @@ impl Driver {
         let maybe_segment = Segment::read_from_and_validate(&mut buf);
         Ok(Async::Ready((maybe_segment, addr)))
     }
+}
+
+/// DRY-macro for hard I/O errors within the driver.
+///
+/// Attempts to send the error via the contained io_err channel
+/// to the listener and shuts down the driver.
+macro_rules! hard_io_err {
+    ($this:ident, $err:expr) => {{
+        let _ = $this.io_err.take()
+            .expect("polling after I/O error")
+            .send($err);
+
+        // Shutdown the driver by completing the future
+        return Ok(Async::Ready(()));
+    }};
 }
 
 // To make the driver work in the background on an executor, we represent
