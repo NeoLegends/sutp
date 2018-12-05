@@ -1,15 +1,11 @@
-use bytes::BytesMut;
-use futures::prelude::*;
+use futures::sync::mpsc;
 use rand;
 use std::{
     io,
     net::SocketAddr,
     num::Wrapping,
 };
-use tokio::{
-    io::{AsyncRead, AsyncWrite},
-    net::udp::{UdpFramed, UdpSocket},
-};
+use tokio::net::udp::{UdpFramed, UdpSocket};
 
 use codec::SutpCodec;
 use segment::Segment;
@@ -18,14 +14,10 @@ use segment::Segment;
 #[derive(Debug)]
 pub struct SutpStream {
     local_sq_no: Wrapping<u32>,
+    recv: mpsc::Receiver<Result<Segment, io::Error>>,
     remote_sq_no: Wrapping<u32>,
-    socket: UdpFramed<SutpCodec>,
+    send_socket: UdpFramed<SutpCodec>,
     state: State,
-}
-
-#[derive(Debug)]
-pub struct Connect {
-
 }
 
 /// The connection state.
@@ -40,31 +32,20 @@ impl SutpStream {
     /// When this function returns, the connection has not yet been
     /// established. This will be done on the first usage of the socket
     pub fn connect(addr: &SocketAddr) -> io::Result<Self> {
-        let socket = {
-            let sock = UdpSocket::bind(&addr)?;
-            sock.connect(&addr)?;
-            sock
-        };
-
-        Ok(Self {
-            local_sq_no: Wrapping(rand::random()),
-            remote_sq_no: Wrapping(0),
-            socket: UdpFramed::new(socket, SutpCodec),
-            state: State::Null,
-        })
+        unimplemented!()
     }
 
-    /// Constructs an SUTP stream, connected to the given socket using the
-    /// given buffer as read buffer containing the first segment.
+    /// Constructs an SUTP stream.
     pub(crate) fn from_listener(
-        socket: UdpSocket,
-        recv_buf: BytesMut,
-    ) -> io::Result<Self> {
-        Ok(Self {
+        sock: UdpSocket,
+        recv: mpsc::Receiver<Result<Segment, io::Error>>,
+    ) -> Self {
+        Self {
             local_sq_no: Wrapping(rand::random()),
+            recv: recv,
             remote_sq_no: Wrapping(0),
-            socket: UdpFramed::new(socket, SutpCodec),
+            send_socket: UdpFramed::new(sock, SutpCodec),
             state: State::Null,
-        })
+        }
     }
 }
