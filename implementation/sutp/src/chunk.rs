@@ -2,9 +2,11 @@
 //! https://laboratory.comsys.rwth-aachen.de/sutp/data-format/blob/master/README.md.
 
 use byteorder::{NetworkEndian, ReadBytesExt, WriteBytesExt};
-use std::io::{self, Read, Result, Write};
-use std::mem;
-use std::u16;
+use std::{
+    io::{self, Read, Result, Write},
+    mem,
+    u16,
+};
 
 // TODO: Refactor this to use the Bytes struct instead of reading from
 // an io::Read for better efficiency (because we can save the copying).
