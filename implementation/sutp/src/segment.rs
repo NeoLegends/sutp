@@ -20,12 +20,6 @@ pub struct Segment {
     pub window_size: u32,
 }
 
-/// The error when segment validation is not successful.
-#[derive(Clone, Debug, Eq, Hash, PartialEq)]
-pub struct ValidationError {
-    issues: Vec<Issue>,
-}
-
 /// A specific segment validation issue.
 #[derive(Copy, Clone, Debug, Eq, Hash, PartialEq)]
 pub enum Issue {
@@ -43,6 +37,12 @@ pub enum Issue {
 
     /// The segment does not contain any chunks.
     NoChunks,
+}
+
+/// The error when segment validation is not successful.
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub struct ValidationError {
+    issues: Vec<Issue>,
 }
 
 impl Segment {
@@ -229,7 +229,37 @@ impl Segment {
     }
 }
 
+impl Display for Issue {
+    fn fmt(&self, fmt: &mut Formatter) -> FmtResult {
+        match *self {
+            Issue::Conflict => "conflicting chunks".fmt(fmt),
+            Issue::DuplicatedChunks { abrt, fin, syn } => {
+                let mut duplicated = Vec::with_capacity(3);
+                if abrt {
+                    duplicated.push("ABRT");
+                }
+                if fin {
+                    duplicated.push("FIN");
+                }
+                if syn {
+                    duplicated.push("SYN");
+                }
+
+                let joined = duplicated.join(", ");
+                write!(fmt, "duplicated {}", joined)
+            },
+            Issue::NoChunks => "empty chunk list".fmt(fmt),
+        }
+    }
+}
+
 impl ValidationError {
+    /// Constructs a new validation error from the given, non-empty
+    /// list of issues.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the issues list is empty.
     pub fn new(issues: Vec<Issue>) -> Self {
         assert!(!issues.is_empty());
 
@@ -244,7 +274,12 @@ impl ValidationError {
 
 impl Display for ValidationError {
     fn fmt(&self, fmt: &mut Formatter) -> FmtResult {
-        fmt.write_str("segment validation failed")
+        let joined = self.issues.iter()
+            .map(|i| i.to_string())
+            .collect::<Vec<_>>()
+            .join("; ");
+
+        write!(fmt, "segment validation failed: {}", joined)
     }
 }
 
