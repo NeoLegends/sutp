@@ -30,7 +30,7 @@ impl SutpStream {
     /// Attempts to create a connection to the given remote.
     ///
     /// When this function returns, the connection has not yet been
-    /// established. This will be done on the first usage of the socket
+    /// established. This will be done on the first usage of the socket.
     pub fn connect(addr: &SocketAddr) -> io::Result<Self> {
         unimplemented!()
     }
