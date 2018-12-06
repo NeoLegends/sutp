@@ -20,10 +20,40 @@ pub struct SutpStream {
     state: State,
 }
 
-/// The connection state.
+/// States of the protocol automaton.
 #[derive(Copy, Clone, Debug, Eq, Hash, PartialEq)]
-enum State {
-    Null,
+pub enum State {
+    /// The connection is in the process of being opened and there were no
+    /// segments sent so far.
+    ///
+    /// This is the start state for new connections made directly through the
+    /// stream by `connect`ing it.
+    Opening,
+
+    /// The connection has sent the first SYN->, but is still waiting for
+    /// <-SYN acking the first one.
+    SynSent,
+
+    /// The stream has received the first SYN-> and is in the progress of
+    /// ACKing that.
+    ///
+    /// This is the start state for new connections coming from the listener.
+    SynRcvd,
+
+    /// The connection is open and full-duplex transport is possible.
+    Established,
+
+    /// A FIN chunk has been sent and the sending side has been closed.
+    FinSent,
+
+    /// A FIN chunk was received and the receiving side has been closed.
+    ///
+    /// Once the socket is in this state, already-buffered and yet-outstanding
+    /// data can still be read, but anything after that will cause an error.
+    FinRecvd,
+
+    /// The connection is closed and no further data can be sent.
+    Closed,
 }
 
 impl SutpStream {
