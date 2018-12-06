@@ -247,9 +247,10 @@ impl Future for Driver {
             // Ensure new connections are getting picked up
             //
             // TODO: Refactor this somehow. This is super less-than-ideal, because
-            // a lot of new connections can block the processing of already-opened
-            // ones. Ideally we'd separate these concerns and let the backpressure
-            // of new connections not apply to the handling of existing connections.
+            // receiving a lot of new connections can block the processing of
+            // already-opened ones. Ideally we'd separate these concerns and let the
+            // backpressure of new connections not apply to the handling of existing
+            // connections.
             if let Some(ref mut fut) = self.new_conn_fut.as_mut() {
                 match fut.poll() {
                     Ok(Async::Ready(sender)) => self.new_conn = Some(sender),
@@ -297,7 +298,7 @@ impl Future for Driver {
                     continue;
                 }
 
-                // Save due to check above
+                // Safe due to check above
                 let segment = maybe_segment.unwrap();
 
                 if !segment.is_syn1() {
