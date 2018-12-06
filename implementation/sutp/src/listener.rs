@@ -236,8 +236,8 @@ impl Future for Driver {
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
         loop {
             // If the new_conn channel is closed and the connection map is empty
-            // we need to shut down, because everything has been dropped and there's
-            // nothing to forward data to.
+            // we need to shut down, because everything has been dropped and
+            // there's nothing to forward data to.
             if self.new_conn.is_none() &&
                 self.new_conn_fut.is_none() &&
                 self.conn_map.is_empty() {
@@ -246,11 +246,11 @@ impl Future for Driver {
 
             // Ensure new connections are getting picked up
             //
-            // TODO: Refactor this somehow. This is super less-than-ideal, because
-            // receiving a lot of new connections can block the processing of
-            // already-opened ones. Ideally we'd separate these concerns and let the
-            // backpressure of new connections not apply to the handling of existing
-            // connections.
+            // TODO: Refactor this somehow. This is super less-than-ideal,
+            // because receiving a lot of new connections can block the processing
+            // of already-opened ones. Ideally we'd separate these concerns and let
+            // the backpressure of new connections not apply to the handling of
+            // existing connections.
             if let Some(ref mut fut) = self.new_conn_fut.as_mut() {
                 match fut.poll() {
                     Ok(Async::Ready(sender)) => self.new_conn = Some(sender),
