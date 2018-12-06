@@ -28,7 +28,7 @@ pub enum State {
     ///
     /// This is the start state for new connections made directly through the
     /// stream by `connect`ing it.
-    Opening,
+    BeforeOpen,
 
     /// The connection has sent the first SYN->, but is still waiting for
     /// <-SYN acking the first one.
@@ -41,7 +41,7 @@ pub enum State {
     SynRcvd,
 
     /// The connection is open and full-duplex transport is possible.
-    Established,
+    Open,
 
     /// A FIN chunk has been sent and the sending side has been closed.
     FinSent,
