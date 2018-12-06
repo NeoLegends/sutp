@@ -39,13 +39,14 @@ impl SutpStream {
     pub(crate) fn from_listener(
         sock: UdpSocket,
         recv: mpsc::Receiver<Result<Segment, io::Error>>,
+        initial_state: State,
     ) -> Self {
         Self {
             local_sq_no: Wrapping(rand::random()),
             recv: recv,
             remote_sq_no: Wrapping(0),
             send_socket: UdpFramed::new(sock, SutpCodec),
-            state: State::Null,
+            state: initial_state,
         }
     }
 }
