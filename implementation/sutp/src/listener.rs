@@ -17,7 +17,7 @@ use tokio::{
 
 use ::ResultExt;
 use segment::Segment;
-use stream::SutpStream;
+use stream::{State, SutpStream};
 
 /// Max size of a UDP datagram.
 const UDP_DGRAM_SIZE: usize = u16::MAX as usize;
@@ -320,8 +320,12 @@ impl Future for Driver {
                 // very much affects our performance. If this channel overflows,
                 // we don't apply backpressure right now, instead we just discard
                 // the segments and don't even notify the sender about that.
-                let (tx, rx) = mpsc::channel(8);
-                let stream = SutpStream::from_listener(sock, rx);
+                let (mut tx, rx) = mpsc::channel(8);
+
+                // Queue initial segment for processing in the SutpStream
+                tx.try_send(Ok(segment)).expect("failed to queue initial segment");
+
+                let stream = SutpStream::from_listener(sock, rx, State::SynRcvd);
 
                 new_conn_tx = Some(tx);
                 self.new_conn_fut = Some(new_conn.send((stream, addr.clone())));
