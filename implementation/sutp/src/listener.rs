@@ -284,7 +284,7 @@ impl Future for Driver {
                     Err(ref e) if e.is_full() => {
                         warn!("discarding segment due to overpressure");
                     },
-                    Err(e) => panic!("unknown channel failure: {:?}", e),
+                    Err(e) => unreachable!("unknown channel failure: {:?}", e),
                 }
             } else if let Some(new_conn) = self.new_conn.take() {
                 // We need to check whether the given segment is a SYN-> segment
