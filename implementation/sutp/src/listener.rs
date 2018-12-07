@@ -270,11 +270,6 @@ impl Future for Driver {
                 Err(e) => hard_io_err!(self, e),
             };
 
-            // Currently needed due to borrowing issues, I hope NLL will
-            // make these variables obsolete soon.
-            let mut conn_dead = false;
-            let mut new_conn_tx = None;
-
             if let Some(conn) = self.conn_map.get_mut(&addr) {
                 // We have a connection which we need to forward the segment
                 // parsing result to.
@@ -283,7 +278,9 @@ impl Future for Driver {
                 // not sure how without affecting all other connections as well.
                 match conn.try_send(maybe_segment) {
                     Ok(_) => {},
-                    Err(ref e) if e.is_disconnected() => conn_dead = true,
+                    Err(ref e) if e.is_disconnected() => {
+                        self.conn_map.remove(&addr);
+                    },
                     Err(ref e) if e.is_full() => {
                         warn!("discarding segment due to overpressure");
                     },
@@ -327,23 +324,16 @@ impl Future for Driver {
                 // Queue initial segment for processing in the SutpStream
                 tx.try_send(Ok(segment)).expect("failed to queue initial segment");
 
-                let stream = SutpStream::from_listener(sock, rx, State::SynRcvd);
+                self.conn_map.insert(addr, tx);
 
-                new_conn_tx = Some(tx);
-                self.new_conn_fut = Some(new_conn.send((stream, addr.clone())));
+                let stream = SutpStream::from_listener(sock, rx, State::SynRcvd);
+                self.new_conn_fut = Some(new_conn.send((stream, addr)));
             } else {
                 // The segment is invalid and we don't know where it's coming from,
                 // or the listener has been dropped and we cannot accept new
                 // connections.
 
                 trace!("received invalid segment from unknown address");
-            }
-
-            if conn_dead {
-                self.conn_map.remove(&addr);
-            }
-            if let Some(tx) = new_conn_tx {
-                self.conn_map.insert(addr, tx);
             }
         }
     }
