@@ -10,7 +10,7 @@ use std::{
 };
 
 use crate::ResultExt;
-use crate::chunk::Chunk;
+use crate::chunk::{Chunk, CompressionAlgorithm};
 
 /// An SUTP segment.
 #[derive(Clone, Debug, Default, Hash, Eq, PartialEq)]
@@ -80,6 +80,18 @@ impl Segment {
             });
 
         contains_syn && contains_acking_sack
+    }
+
+    /// Selects the most-preferred supported compression algorithm, if one is present.
+    pub fn select_compression_alg(&self) -> Option<CompressionAlgorithm> {
+        self.chunks.iter()
+            .filter(|ch| ch.is_compression_negotiation())
+            .flat_map(|ch| match ch {
+                Chunk::CompressionNegotiation(list) => list,
+                _ => unreachable!(),
+            })
+            .find(|alg| alg.is_known())
+            .map(|alg| *alg)
     }
 
     /// Validates the segment's contents for the general case.
@@ -355,6 +367,44 @@ mod tests {
         };
 
         assert_eq!(sq, expected);
+    }
+
+    #[test]
+    fn select_compression_negotiation() {
+        let segment = SegmentBuilder::new()
+            .seq_no(1)
+            .window_size(1)
+            .with_chunk(Chunk::CompressionNegotiation(vec![
+                CompressionAlgorithm::Gzip,
+                CompressionAlgorithm::Snappy,
+            ]))
+            .build();
+
+        assert_eq!(segment.select_compression_alg(), Some(CompressionAlgorithm::Gzip));
+    }
+
+    #[test]
+    fn select_compression_negotiation_empty() {
+        let segment = SegmentBuilder::new()
+            .seq_no(1)
+            .window_size(1)
+            .with_chunk(Chunk::CompressionNegotiation(Vec::new()))
+            .build();
+
+        assert!(segment.select_compression_alg().is_none());
+    }
+
+    #[test]
+    fn select_compression_negotiation_unknown() {
+        let segment = SegmentBuilder::new()
+            .seq_no(1)
+            .window_size(1)
+            .with_chunk(Chunk::CompressionNegotiation(vec![
+                CompressionAlgorithm::Unknown(100),
+            ]))
+            .build();
+
+        assert!(segment.select_compression_alg().is_none());
     }
 
     /// Ensure we cannot read data from nothing.
