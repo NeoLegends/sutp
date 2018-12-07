@@ -20,6 +20,14 @@ pub struct Segment {
     pub window_size: u32,
 }
 
+/// An builder for an SUTP segment.
+#[derive(Clone, Debug, Default, Hash, Eq, PartialEq)]
+pub struct SegmentBuilder {
+    chunks: Vec<Chunk>,
+    seq_no: Option<u32>,
+    window_size: Option<u32>,
+}
+
 /// A specific segment validation issue.
 #[derive(Copy, Clone, Debug, Eq, Hash, PartialEq)]
 pub enum Issue {
@@ -229,6 +237,48 @@ impl Segment {
     }
 }
 
+impl SegmentBuilder {
+    /// Constructs a new segment builder.
+    pub fn new() -> Self {
+        Self {
+            chunks: Vec::new(),
+            seq_no: None,
+            window_size: None,
+        }
+    }
+
+    /// Builds the final segment.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the sequence number or the window size wasn't set.
+    pub fn build(self) -> Segment {
+        Segment {
+            chunks: self.chunks,
+            seq_no: self.seq_no.expect("missing sequence number"),
+            window_size: self.window_size.expect("missing window size"),
+        }
+    }
+
+    /// Sets the sequence number.
+    pub fn seq_no(mut self, sq_no: u32) -> Self {
+        self.seq_no = Some(sq_no);
+        self
+    }
+
+    /// Sets the window size.
+    pub fn window_size(mut self, size: u32) -> Self {
+        self.window_size = Some(size);
+        self
+    }
+
+    /// Adds a chunk to the list of chunks.
+    pub fn with_chunk(mut self, ch: Chunk) -> Self {
+        self.chunks.push(ch);
+        self
+    }
+}
+
 impl Display for Issue {
     fn fmt(&self, fmt: &mut Formatter) -> FmtResult {
         match *self {
@@ -289,6 +339,23 @@ impl StdError for ValidationError {}
 mod tests {
     use std::io::{Cursor, ErrorKind};
     use super::*;
+
+    #[test]
+    fn builder() {
+        let sq = SegmentBuilder::new()
+            .seq_no(20)
+            .window_size(10)
+            .with_chunk(Chunk::Syn)
+            .build();
+
+        let expected = Segment {
+            chunks: vec![Chunk::Syn],
+            seq_no: 20,
+            window_size: 10,
+        };
+
+        assert_eq!(sq, expected);
+    }
 
     /// Ensure we cannot read data from nothing.
     #[test]
