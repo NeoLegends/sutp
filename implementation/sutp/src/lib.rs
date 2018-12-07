@@ -8,10 +8,12 @@ mod listener;
 mod segment;
 mod stream;
 
-pub use crate::accept::Accept;
-pub use crate::connect::Connect;
-pub use crate::listener::{Incoming, SutpListener};
-pub use crate::stream::SutpStream;
+pub use crate::{
+    accept::Accept,
+    connect::Connect,
+    listener::{Incoming, SutpListener},
+    stream::SutpStream,
+};
 
 use std::u16;
 

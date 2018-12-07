@@ -1,3 +1,7 @@
+use crate::{
+    connect::Connect,
+    segment::Segment,
+};
 use futures::{
     prelude::*,
     sync::mpsc,
@@ -13,9 +17,6 @@ use tokio::{
     io::{AsyncRead, AsyncWrite},
     net::udp::UdpSocket,
 };
-
-use crate::connect::Connect;
-use crate::segment::Segment;
 
 /// A full-duplex SUTP stream.
 #[derive(Debug)]

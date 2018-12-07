@@ -2,15 +2,16 @@
 //! https://laboratory.comsys.rwth-aachen.de/sutp/data-format/blob/master/README.md.
 
 use byteorder::{NetworkEndian, ReadBytesExt, WriteBytesExt};
+use crate::{
+    ResultExt,
+    chunk::{Chunk, CompressionAlgorithm},
+};
 use flate2::{CrcReader, CrcWriter};
 use std::{
     error::Error as StdError,
     fmt::{Display, Formatter, Result as FmtResult},
     io::{self, Cursor, Error, ErrorKind, Read, Write}
 };
-
-use crate::ResultExt;
-use crate::chunk::{Chunk, CompressionAlgorithm};
 
 /// An SUTP segment.
 #[derive(Clone, Debug, Default, Hash, Eq, PartialEq)]

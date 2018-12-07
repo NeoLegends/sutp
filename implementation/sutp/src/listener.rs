@@ -1,4 +1,10 @@
 use bytes::BytesMut;
+use crate::{
+    ResultExt,
+    UDP_DGRAM_SIZE,
+    accept::Accept,
+    segment::Segment,
+};
 use futures::{
     prelude::*,
     sink::Send,
@@ -15,10 +21,6 @@ use tokio::{
     self,
     net::udp::UdpSocket,
 };
-
-use crate::{ResultExt, UDP_DGRAM_SIZE};
-use crate::accept::Accept;
-use crate::segment::Segment;
 
 /// The size of the queue for new connections.
 const NEW_CONN_QUEUE_SIZE: usize = 8;

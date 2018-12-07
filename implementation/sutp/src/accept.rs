@@ -1,5 +1,10 @@
 //! Implements the future that accepts a new connection.
 
+use crate::{
+    chunk::{Chunk, CompressionAlgorithm},
+    segment::{Segment, SegmentBuilder},
+    stream::SutpStream,
+};
 use futures::{
     prelude::*,
     sync::mpsc,
@@ -15,12 +20,6 @@ use tokio::{
     clock,
     net::udp::UdpSocket,
     timer::Delay,
-};
-
-use crate::{
-    chunk::{Chunk, CompressionAlgorithm},
-    segment::{Segment, SegmentBuilder},
-    stream::SutpStream,
 };
 
 const DRIVER_AWAY: &str = "driver has gone away";
