@@ -3,7 +3,9 @@ use futures::{
     prelude::*,
     sink::Send,
     sync::{mpsc, oneshot},
+    try_ready,
 };
+use log::{trace, warn};
 use std::{
     collections::HashMap,
     io::{self, Cursor},
@@ -15,9 +17,9 @@ use tokio::{
     net::udp::UdpSocket,
 };
 
-use ::ResultExt;
-use segment::Segment;
-use stream::{Connect, State, SutpStream};
+use crate::ResultExt;
+use crate::segment::Segment;
+use crate::stream::{Connect, State, SutpStream};
 
 /// Max size of a UDP datagram.
 const UDP_DGRAM_SIZE: usize = u16::MAX as usize;

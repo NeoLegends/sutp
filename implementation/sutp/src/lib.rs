@@ -1,11 +1,3 @@
-extern crate byteorder;
-extern crate bytes;
-extern crate flate2;
-#[macro_use] extern crate futures;
-#[macro_use] extern crate log;
-extern crate rand;
-extern crate tokio;
-
 // Macros need to lexically come before the rest to be usable
 #[macro_use] mod macros;
 
@@ -15,8 +7,8 @@ mod listener;
 mod segment;
 mod stream;
 
-pub use listener::{Incoming, SutpListener};
-pub use stream::{Connect, SutpStream};
+pub use crate::listener::{Incoming, SutpListener};
+pub use crate::stream::{Connect, SutpStream};
 
 /// Some useful extensions to `Result`.
 trait ResultExt<T, E> {

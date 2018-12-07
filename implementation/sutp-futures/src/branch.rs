@@ -5,6 +5,7 @@ use futures::{
         BiLock,
         mpsc::{channel, Receiver, Sender},
     },
+    try_ready,
 };
 
 /// A stream similar to `.filter()` that splits up a stream into two based

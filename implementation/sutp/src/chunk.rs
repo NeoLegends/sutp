@@ -2,6 +2,7 @@
 //! https://laboratory.comsys.rwth-aachen.de/sutp/data-format/blob/master/README.md.
 
 use byteorder::{NetworkEndian, ReadBytesExt, WriteBytesExt};
+use log::debug;
 use std::{
     io::{self, Read, Result, Write},
     mem,

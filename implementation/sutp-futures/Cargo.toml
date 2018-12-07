@@ -2,6 +2,7 @@
 name = "sutp-futures"
 version = "0.1.0"
 authors = ["Moritz Gunz <moritz.gunz@gmail.com>"]
+edition = "2018"
 
 [dependencies]
 futures = "0.1.25"

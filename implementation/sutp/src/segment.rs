@@ -2,7 +2,6 @@
 //! https://laboratory.comsys.rwth-aachen.de/sutp/data-format/blob/master/README.md.
 
 use byteorder::{NetworkEndian, ReadBytesExt, WriteBytesExt};
-use chunk::Chunk;
 use flate2::{CrcReader, CrcWriter};
 use std::{
     error::Error as StdError,
@@ -10,7 +9,8 @@ use std::{
     io::{self, Error, ErrorKind, Read, Write}
 };
 
-use ::ResultExt;
+use crate::ResultExt;
+use crate::chunk::Chunk;
 
 /// An SUTP segment.
 #[derive(Clone, Debug, Default, Hash, Eq, PartialEq)]

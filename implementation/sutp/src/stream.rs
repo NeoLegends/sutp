@@ -13,8 +13,8 @@ use tokio::{
     net::udp::{UdpFramed, UdpSocket},
 };
 
-use codec::SutpCodec;
-use segment::Segment;
+use crate::codec::SutpCodec;
+use crate::segment::Segment;
 
 /// A full-duplex SUTP stream.
 #[derive(Debug)]
@@ -82,7 +82,7 @@ impl SutpStream {
     ///
     /// When this function returns, the connection has not yet been
     /// established. This will be done on the first usage of the socket.
-    pub fn connect(addr: &SocketAddr) -> io::Result<Self> {
+    pub fn connect(_addr: &SocketAddr) -> io::Result<Self> {
         unimplemented!()
     }
 
@@ -92,7 +92,7 @@ impl SutpStream {
         recv: mpsc::Receiver<Result<Segment, io::Error>>,
         initial_state: State,
     ) -> Connect {
-        let l = Self {
+        let _l = Self {
             local_sq_no: Wrapping(rand::random()),
             recv: recv,
             remote_sq_no: Wrapping(0),
@@ -112,7 +112,7 @@ impl SutpStream {
         }
     }
 
-    fn try_read(&mut self, buf: &mut [u8]) -> Poll<usize, io::Error> {
+    fn try_read(&mut self, _buf: &mut [u8]) -> Poll<usize, io::Error> {
         match self.state {
             State::Open => {},
             State::FinRecvd => unimplemented!(),
@@ -122,7 +122,7 @@ impl SutpStream {
         unimplemented!()
     }
 
-    fn try_write(&mut self, buf: &[u8]) -> Poll<usize, io::Error> {
+    fn try_write(&mut self, _buf: &[u8]) -> Poll<usize, io::Error> {
         self.assert_can_write()?;
 
         unimplemented!()

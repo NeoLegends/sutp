@@ -2,7 +2,7 @@ use bytes::{BufMut, BytesMut};
 use std::io::{self, Cursor, Error, ErrorKind, Read};
 use tokio::codec::{Decoder, Encoder};
 
-use segment::Segment;
+use crate::segment::Segment;
 
 /// An implementation of a (de)serializer of SUTP segments.
 ///

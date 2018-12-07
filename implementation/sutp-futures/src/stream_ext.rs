@@ -1,7 +1,7 @@
 use futures::prelude::*;
 
-use branch::Branch;
-use graceful::Graceful;
+use crate::branch::Branch;
+use crate::graceful::Graceful;
 
 /// Stream extensions.
 pub trait StreamExt {
