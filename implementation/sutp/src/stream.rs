@@ -135,16 +135,6 @@ impl SutpStream {
     }
 }
 
-/// Converts from Async::NotReady to ErrorKind::WouldBlock.
-macro_rules! try_would_block {
-    ($val:expr) => {{
-        match $val? {
-            Async::Ready(result) => Ok(result),
-            Async::NotReady => Err(ErrorKind::WouldBlock.into()),
-        }
-    }};
-}
-
 impl Read for SutpStream {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         try_would_block!(self.try_read(buf))
