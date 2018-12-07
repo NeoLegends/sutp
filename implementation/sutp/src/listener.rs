@@ -21,6 +21,17 @@ use crate::ResultExt;
 use crate::segment::Segment;
 use crate::stream::{Connect, State, SutpStream};
 
+/// The size of the queue for new connections.
+const NEW_CONN_QUEUE_SIZE: usize = 8;
+
+// TODO: The 8 here is chosen arbitrarily, but right now this
+// very much affects our performance. If this channel overflows,
+// we don't apply backpressure right now, instead we just discard
+// the segments and don't even notify the sender about that.
+
+/// The size of a channel for newly arriving segments.
+const STREAM_SEGMENT_QUEUE_SIZE: usize = 8;
+
 /// Max size of a UDP datagram.
 const UDP_DGRAM_SIZE: usize = u16::MAX as usize;
 
@@ -132,8 +143,7 @@ impl SutpListener {
     /// Panics if the listener driver cannot be spawned onto the default executor.
     pub fn from_socket(socket: UdpSocket) -> Self {
         let (io_err_tx, io_err_rx) = oneshot::channel();
-        // 4 is arbitrarily chosen, possibly make a parameter
-        let (new_conn_tx, new_conn_rx) = mpsc::channel(4);
+        let (new_conn_tx, new_conn_rx) = mpsc::channel(NEW_CONN_QUEUE_SIZE);
 
         tokio::spawn(Driver::new(socket, io_err_tx, new_conn_tx));
 
@@ -315,11 +325,7 @@ impl Future for Driver {
                     Err(e) => hard_io_err!(self, e),
                 };
 
-                // TODO: The 8 here is chosen arbitrarily, but right now this
-                // very much affects our performance. If this channel overflows,
-                // we don't apply backpressure right now, instead we just discard
-                // the segments and don't even notify the sender about that.
-                let (mut tx, rx) = mpsc::channel(8);
+                let (mut tx, rx) = mpsc::channel(STREAM_SEGMENT_QUEUE_SIZE);
 
                 // Queue initial segment for processing in the SutpStream
                 tx.try_send(Ok(segment)).expect("failed to queue initial segment");
