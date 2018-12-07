@@ -395,7 +395,10 @@ mod tests {
             ]))
             .build();
 
-        assert_eq!(segment.select_compression_alg(), Some(CompressionAlgorithm::Gzip));
+        assert_eq!(
+            segment.select_compression_alg(),
+            Some(CompressionAlgorithm::Gzip),
+        );
     }
 
     #[test]
