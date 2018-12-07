@@ -32,13 +32,32 @@ const CONNECTION_TIMEOUT: Duration = Duration::from_secs(30);
 /// A future representing an SUTP stream being accepted.
 #[derive(Debug)]
 pub struct Accept {
+    /// The timeout guarding the send / response of a single ACK response.
+    ///
+    /// When this elapses, the response will be re-sent.
     ack_timeout: Option<Delay>,
+
+    /// The compression algorithm, if one was negotiated.
     compression_algorithm: Option<CompressionAlgorithm>,
+
+    /// The timeout guarding the whole connection setup.
+    ///
+    /// When this elapses the future will resolve with an error.
     conn_timeout: Option<Delay>,
+
+    /// The current local sequence number.
     local_sq_no: Wrapping<u32>,
+
+    /// The channel of incoming segments.
     recv: Option<mpsc::Receiver<Result<Segment, io::Error>>>,
+
+    /// The current remote sequence number.
     remote_sq_no: Wrapping<u32>,
+
+    /// The socket to send segments over.
     send_socket: Option<UdpSocket>,
+
+    /// The current state of the future.
     state: AcceptState,
 }
 
