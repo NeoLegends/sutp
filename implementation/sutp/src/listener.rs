@@ -17,7 +17,7 @@ use tokio::{
 
 use ::ResultExt;
 use segment::Segment;
-use stream::{State, SutpStream};
+use stream::{Connect, State, SutpStream};
 
 /// Max size of a UDP datagram.
 const UDP_DGRAM_SIZE: usize = u16::MAX as usize;
@@ -34,11 +34,11 @@ pub struct SutpListener {
     // This internally consists just of two channels that connect to the driver.
     // Both channels can be used asynchronously as not to block the event loop.
 
+    /// A channel receiving newly opened connections.
+    conn_recv: mpsc::Receiver<(Connect, SocketAddr)>,
+
     /// A channel receiving hard I/O errors.
     io_err: oneshot::Receiver<io::Error>,
-
-    /// A channel receiving newly opened connections.
-    new_conn: mpsc::Receiver<(SutpStream, SocketAddr)>,
 }
 
 /// The background worker behind an SUTP listener.
@@ -72,10 +72,10 @@ struct Driver {
     io_err: Option<oneshot::Sender<io::Error>>,
 
     /// A channel used to transmit newly opened connections to the listener.
-    new_conn: Option<mpsc::Sender<(SutpStream, SocketAddr)>>,
+    new_conn: Option<mpsc::Sender<(Connect, SocketAddr)>>,
 
     /// The temporary future representing the new-connection-transmitting process.
-    new_conn_fut: Option<Send<mpsc::Sender<(SutpStream, SocketAddr)>>>,
+    new_conn_fut: Option<Send<mpsc::Sender<(Connect, SocketAddr)>>>,
 
     /// A receive buffer for UDP data.
     recv_buf: BytesMut,
@@ -102,7 +102,7 @@ impl Incoming {
 }
 
 impl Stream for Incoming {
-    type Item = (SutpStream, SocketAddr);
+    type Item = (Connect, SocketAddr);
     type Error = io::Error;
 
     fn poll(&mut self) -> Poll<Option<Self::Item>, Self::Error> {
@@ -136,8 +136,8 @@ impl SutpListener {
         tokio::spawn(Driver::new(socket, io_err_tx, new_conn_tx));
 
         Self {
+            conn_recv: new_conn_rx,
             io_err: io_err_rx,
-            new_conn: new_conn_rx,
         }
     }
 
@@ -156,7 +156,7 @@ impl SutpListener {
     ///
     /// Panics if not called within a future's execution context or when
     /// polling after an I/O error.
-    pub fn poll_accept(&mut self) -> Poll<(SutpStream, SocketAddr), io::Error> {
+    pub fn poll_accept(&mut self) -> Poll<(Connect, SocketAddr), io::Error> {
         // Check if there were I/O errors before querying the connection channel
         match self.io_err.poll() {
             Ok(Async::Ready(err)) => return Err(err),
@@ -166,7 +166,7 @@ impl SutpListener {
 
         // Channel errors can only occur when the sender has been dropped, and
         // this only happens on hard I/O errors.
-        match self.new_conn.poll().expect("cannot poll after an IO error") {
+        match self.conn_recv.poll().expect("cannot poll after an IO error") {
             // We're given IO errors as channel items
             Async::Ready(Some(conn)) => Ok(Async::Ready(conn)),
             _ => Ok(Async::NotReady),
@@ -179,7 +179,7 @@ impl Driver {
     pub fn new(
         socket: UdpSocket,
         io_err: oneshot::Sender<io::Error>,
-        new_conn: mpsc::Sender<(SutpStream, SocketAddr)>,
+        new_conn: mpsc::Sender<(Connect, SocketAddr)>,
     ) -> Self {
         Self {
             conn_map: HashMap::new(),
