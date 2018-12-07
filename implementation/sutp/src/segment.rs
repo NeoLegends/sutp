@@ -54,6 +54,21 @@ pub struct ValidationError {
 }
 
 impl Segment {
+    /// Checks whether this segment ACKs the given one.
+    pub fn acks(&self, other: &Segment) -> bool {
+        self.chunks.iter()
+            .filter(|ch| ch.is_sack())
+            .map(|ch| match ch {
+                Chunk::Sack(ack, nak_list) => (ack, nak_list),
+                _ => unreachable!(),
+            })
+            .any(|(&ack, nak_list)| {
+                let is_nakd = nak_list.iter()
+                    .any(|&nak| other.seq_no == nak);
+                !is_nakd && ack >= other.seq_no
+            })
+    }
+
     /// Checks whether the segment can be classified as a "SYN->" or "SYN 1"
     /// segment. That is, the very first segment on the wire used to intiate
     /// a connection.
