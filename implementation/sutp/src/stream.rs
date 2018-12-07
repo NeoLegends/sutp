@@ -1,4 +1,5 @@
 use crate::{
+    chunk::CompressionAlgorithm,
     connect::Connect,
     segment::Segment,
 };
@@ -21,6 +22,7 @@ use tokio::{
 /// A full-duplex SUTP stream.
 #[derive(Debug)]
 pub struct SutpStream {
+    compression_algorithm: Option<CompressionAlgorithm>,
     local_sq_no: Wrapping<u32>,
     recv: mpsc::Receiver<Result<Segment, io::Error>>,
     remote_sq_no: Wrapping<u32>,
@@ -61,8 +63,10 @@ impl SutpStream {
         sock: UdpSocket,
         local_sq_no: Wrapping<u32>,
         remote_sq_no: Wrapping<u32>,
+        compression_alg: Option<CompressionAlgorithm>,
     ) -> Self {
         Self {
+            compression_algorithm: compression_alg,
             local_sq_no,
             recv,
             remote_sq_no,

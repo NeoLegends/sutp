@@ -219,6 +219,7 @@ impl Future for Accept {
                         self.send_socket.take().expect(POLLED_TWICE),
                         self.local_sq_no + Wrapping(1),
                         self.remote_sq_no,
+                        self.compression_algorithm,
                     );
                     return Ok(Async::Ready(stream));
                 },
