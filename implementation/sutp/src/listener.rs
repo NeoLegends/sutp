@@ -10,16 +10,15 @@ use std::{
     collections::HashMap,
     io::{self, Cursor},
     net::SocketAddr,
-    u16,
 };
 use tokio::{
     self,
     net::udp::UdpSocket,
 };
 
-use crate::ResultExt;
+use crate::{ResultExt, UDP_DGRAM_SIZE};
+use crate::accept::Accept;
 use crate::segment::Segment;
-use crate::stream::{Connect, State, SutpStream};
 
 /// The size of the queue for new connections.
 const NEW_CONN_QUEUE_SIZE: usize = 8;
@@ -31,9 +30,6 @@ const NEW_CONN_QUEUE_SIZE: usize = 8;
 
 /// The size of a channel for newly arriving segments.
 const STREAM_SEGMENT_QUEUE_SIZE: usize = 8;
-
-/// Max size of a UDP datagram.
-const UDP_DGRAM_SIZE: usize = u16::MAX as usize;
 
 /// A stream of incoming SUTP connections.
 #[derive(Debug)]
@@ -48,7 +44,7 @@ pub struct SutpListener {
     // Both channels can be used asynchronously as not to block the event loop.
 
     /// A channel receiving newly opened connections.
-    conn_recv: mpsc::Receiver<(Connect, SocketAddr)>,
+    conn_recv: mpsc::Receiver<(Accept, SocketAddr)>,
 
     /// A channel receiving hard I/O errors.
     io_err: oneshot::Receiver<io::Error>,
@@ -85,10 +81,10 @@ struct Driver {
     io_err: Option<oneshot::Sender<io::Error>>,
 
     /// A channel used to transmit newly opened connections to the listener.
-    new_conn: Option<mpsc::Sender<(Connect, SocketAddr)>>,
+    new_conn: Option<mpsc::Sender<(Accept, SocketAddr)>>,
 
     /// The temporary future representing the new-connection-transmitting process.
-    new_conn_fut: Option<Send<mpsc::Sender<(Connect, SocketAddr)>>>,
+    new_conn_fut: Option<Send<mpsc::Sender<(Accept, SocketAddr)>>>,
 
     /// A receive buffer for UDP data.
     recv_buf: BytesMut,
@@ -115,7 +111,7 @@ impl Incoming {
 }
 
 impl Stream for Incoming {
-    type Item = (Connect, SocketAddr);
+    type Item = (Accept, SocketAddr);
     type Error = io::Error;
 
     fn poll(&mut self) -> Poll<Option<Self::Item>, Self::Error> {
@@ -168,7 +164,7 @@ impl SutpListener {
     ///
     /// Panics if not called within a future's execution context or when
     /// polling after an I/O error.
-    pub fn poll_accept(&mut self) -> Poll<(Connect, SocketAddr), io::Error> {
+    pub fn poll_accept(&mut self) -> Poll<(Accept, SocketAddr), io::Error> {
         // Check if there were I/O errors before querying the connection channel
         match self.io_err.poll() {
             Ok(Async::Ready(err)) => return Err(err),
@@ -191,7 +187,7 @@ impl Driver {
     pub fn new(
         socket: UdpSocket,
         io_err: oneshot::Sender<io::Error>,
-        new_conn: mpsc::Sender<(Connect, SocketAddr)>,
+        new_conn: mpsc::Sender<(Accept, SocketAddr)>,
     ) -> Self {
         Self {
             conn_map: HashMap::new(),
@@ -332,7 +328,7 @@ impl Future for Driver {
 
                 self.conn_map.insert(addr, tx);
 
-                let stream = SutpStream::from_listener(sock, rx, State::SynRcvd);
+                let stream = Accept::from_listener(sock, rx);
                 self.new_conn_fut = Some(new_conn.send((stream, addr)));
             } else {
                 // The segment is invalid and we don't know where it's coming from,

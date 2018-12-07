@@ -1,19 +1,20 @@
 use futures::{
     prelude::*,
     sync::mpsc,
+    try_ready,
 };
 use rand;
 use std::{
-    io::{self, ErrorKind, Read, Write},
+    io::{self, Error, ErrorKind, Read, Write},
     net::SocketAddr,
     num::Wrapping,
 };
 use tokio::{
     io::{AsyncRead, AsyncWrite},
-    net::udp::{UdpFramed, UdpSocket},
+    net::udp::UdpSocket,
 };
 
-use crate::codec::SutpCodec;
+use crate::connect::Connect;
 use crate::segment::Segment;
 
 /// A full-duplex SUTP stream.
@@ -22,36 +23,13 @@ pub struct SutpStream {
     local_sq_no: Wrapping<u32>,
     recv: mpsc::Receiver<Result<Segment, io::Error>>,
     remote_sq_no: Wrapping<u32>,
-    send_socket: UdpFramed<SutpCodec>,
-    state: State,
+    send_socket: UdpSocket,
+    state: StreamState,
 }
 
-/// An SUTP stream during inital connection.
-#[derive(Debug)]
-pub struct Connect {
-
-}
-
-/// States of the protocol automaton.
+/// States of the protocol automaton after the connection has been established.
 #[derive(Copy, Clone, Debug, Eq, Hash, PartialEq)]
-pub enum State {
-    /// The connection is in the process of being opened and there were no
-    /// segments sent so far.
-    ///
-    /// This is the start state for new connections made directly through the
-    /// stream by `connect`ing it.
-    BeforeOpen,
-
-    /// The connection has sent the first SYN->, but is still waiting for
-    /// <-SYN acking the first one.
-    SynSent,
-
-    /// The stream has received the first SYN-> and is in the progress of
-    /// ACKing that.
-    ///
-    /// This is the start state for new connections coming from the listener.
-    SynRcvd,
-
+enum StreamState {
     /// The connection is open and full-duplex transport is possible.
     Open,
 
@@ -68,54 +46,43 @@ pub enum State {
     Closed,
 }
 
-impl Future for Connect {
-    type Item = SutpStream;
-    type Error = io::Error;
-
-    fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-        unimplemented!()
-    }
-}
-
 impl SutpStream {
-    /// Attempts to create a connection to the given remote.
+    /// Creates an SUTP connection to the given address.
     ///
-    /// When this function returns, the connection has not yet been
-    /// established. This will be done on the first usage of the socket.
-    pub fn connect(_addr: &SocketAddr) -> io::Result<Self> {
+    /// When the returned future completes, the stream has been established
+    /// and can be used to transmit data.
+    pub fn connect(_addr: &SocketAddr) -> Connect {
         unimplemented!()
     }
 
-    /// Constructs an SUTP stream.
-    pub(crate) fn from_listener(
+    pub(crate) fn from_accept(
+        recv: mpsc::Receiver<Result<Segment, Error>>,
         sock: UdpSocket,
-        recv: mpsc::Receiver<Result<Segment, io::Error>>,
-        initial_state: State,
-    ) -> Connect {
-        let _l = Self {
-            local_sq_no: Wrapping(rand::random()),
-            recv: recv,
-            remote_sq_no: Wrapping(0),
-            send_socket: UdpFramed::new(sock, SutpCodec),
-            state: initial_state,
-        };
-
-        unimplemented!()
+        local_sq_no: Wrapping<u32>,
+        remote_sq_no: Wrapping<u32>,
+    ) -> Self {
+        Self {
+            local_sq_no,
+            recv,
+            remote_sq_no,
+            send_socket: sock,
+            state: StreamState::Open,
+        }
     }
 }
 
 impl SutpStream {
     fn assert_can_write(&self) -> io::Result<()> {
         match self.state {
-            State::Open | State::FinRecvd => Ok(()),
+            StreamState::Open | StreamState::FinRecvd => Ok(()),
             _ => Err(ErrorKind::NotConnected.into()),
         }
     }
 
     fn try_read(&mut self, _buf: &mut [u8]) -> Poll<usize, io::Error> {
         match self.state {
-            State::Open => {},
-            State::FinRecvd => unimplemented!(),
+            StreamState::Open => {},
+            StreamState::FinRecvd => unimplemented!(),
             _ => return Err(ErrorKind::NotConnected.into()),
         }
 
@@ -155,6 +122,8 @@ impl Write for SutpStream {
 
 impl AsyncWrite for SutpStream {
     fn shutdown(&mut self) -> Poll<(), io::Error> {
+        try_ready!(self.try_flush());
+
         unimplemented!()
     }
 }
