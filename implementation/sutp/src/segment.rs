@@ -106,7 +106,7 @@ impl Segment {
                 _ => unreachable!(),
             })
             .find(|alg| alg.is_known())
-            .map(|alg| *alg)
+            .cloned()
     }
 
     /// Validates the segment's contents for the general case.

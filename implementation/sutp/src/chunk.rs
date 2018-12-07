@@ -210,7 +210,6 @@ impl Chunk {
 
         // You can collect an iterator of results into a result of an iterator
         let list = (0..(len / U32_SIZE))
-            .into_iter()
             .map(|_| r.read_u32::<NetworkEndian>())
             .map(|code_result| code_result.map(|code| code.into()))
             .collect::<Result<_>>()?;
@@ -243,7 +242,6 @@ impl Chunk {
 
         let ack_no = r.read_u32::<NetworkEndian>()?;
         let nak_list = (0..((len - U32_SIZE) / U32_SIZE))
-            .into_iter()
             .map(|_| r.read_u32::<NetworkEndian>())
             .collect::<Result<_>>()?;
 
@@ -282,7 +280,7 @@ impl Chunk {
         // Ensure we are given correct data, but otherwise discard what we've been
         // given for a robust implementation.
         debug_log_eq!(len, 0);
-        Self::discard_exact(r, len as u64)?;
+        Self::discard_exact(r, len.into())?;
 
         Ok((ch, len))
     }
@@ -404,12 +402,12 @@ impl Chunk {
 
 impl CompressionAlgorithm {
     /// Creates a chunk containing this compression algorithm.
-    pub fn into_chunk(&self) -> Chunk {
-        Chunk::CompressionNegotiation(vec![*self])
+    pub fn into_chunk(self) -> Chunk {
+        Chunk::CompressionNegotiation(vec![self])
     }
 
     /// Returns whether the algorithm is known.
-    pub fn is_known(&self) -> bool {
+    pub fn is_known(self) -> bool {
         match self {
             CompressionAlgorithm::Unknown(_) => false,
             _ => true,
