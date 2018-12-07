@@ -6,7 +6,7 @@ use flate2::{CrcReader, CrcWriter};
 use std::{
     error::Error as StdError,
     fmt::{Display, Formatter, Result as FmtResult},
-    io::{self, Error, ErrorKind, Read, Write}
+    io::{self, Cursor, Error, ErrorKind, Read, Write}
 };
 
 use crate::ResultExt;
@@ -261,6 +261,19 @@ impl Segment {
         crc_writer.into_inner().write_u32::<NetworkEndian>(crc_sum)?;
 
         Ok(())
+    }
+
+    /// Writes the segment to a new vector of bytes.
+    pub fn to_vec(&self) -> Vec<u8> {
+        let mut buf = Cursor::new(Vec::new());
+        self.write_to_with_crc32(&mut buf).unwrap();
+        buf.into_inner()
+    }
+}
+
+impl From<Segment> for Vec<u8> {
+    fn from(sgmt: Segment) -> Self {
+        sgmt.to_vec()
     }
 }
 
