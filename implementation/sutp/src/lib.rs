@@ -16,7 +16,7 @@ mod segment;
 mod stream;
 
 pub use listener::{Incoming, SutpListener};
-pub use stream::SutpStream;
+pub use stream::{Connect, SutpStream};
 
 /// Some useful extensions to `Result`.
 trait ResultExt<T, E> {

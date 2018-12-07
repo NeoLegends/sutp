@@ -1,11 +1,17 @@
-use futures::sync::mpsc;
+use futures::{
+    prelude::*,
+    sync::mpsc,
+};
 use rand;
 use std::{
-    io,
+    io::{self, ErrorKind, Read, Write},
     net::SocketAddr,
     num::Wrapping,
 };
-use tokio::net::udp::{UdpFramed, UdpSocket};
+use tokio::{
+    io::{AsyncRead, AsyncWrite},
+    net::udp::{UdpFramed, UdpSocket},
+};
 
 use codec::SutpCodec;
 use segment::Segment;
@@ -18,6 +24,12 @@ pub struct SutpStream {
     remote_sq_no: Wrapping<u32>,
     send_socket: UdpFramed<SutpCodec>,
     state: State,
+}
+
+/// An SUTP stream during inital connection.
+#[derive(Debug)]
+pub struct Connect {
+
 }
 
 /// States of the protocol automaton.
@@ -56,6 +68,15 @@ pub enum State {
     Closed,
 }
 
+impl Future for Connect {
+    type Item = SutpStream;
+    type Error = io::Error;
+
+    fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
+        unimplemented!()
+    }
+}
+
 impl SutpStream {
     /// Attempts to create a connection to the given remote.
     ///
@@ -70,13 +91,80 @@ impl SutpStream {
         sock: UdpSocket,
         recv: mpsc::Receiver<Result<Segment, io::Error>>,
         initial_state: State,
-    ) -> Self {
-        Self {
+    ) -> Connect {
+        let l = Self {
             local_sq_no: Wrapping(rand::random()),
             recv: recv,
             remote_sq_no: Wrapping(0),
             send_socket: UdpFramed::new(sock, SutpCodec),
             state: initial_state,
+        };
+
+        unimplemented!()
+    }
+}
+
+impl SutpStream {
+    fn assert_can_write(&self) -> io::Result<()> {
+        match self.state {
+            State::Open | State::FinRecvd => Ok(()),
+            _ => Err(ErrorKind::NotConnected.into()),
         }
+    }
+
+    fn try_read(&mut self, buf: &mut [u8]) -> Poll<usize, io::Error> {
+        match self.state {
+            State::Open => {},
+            State::FinRecvd => unimplemented!(),
+            _ => return Err(ErrorKind::NotConnected.into()),
+        }
+
+        unimplemented!()
+    }
+
+    fn try_write(&mut self, buf: &[u8]) -> Poll<usize, io::Error> {
+        self.assert_can_write()?;
+
+        unimplemented!()
+    }
+
+    fn try_flush(&mut self) -> Poll<(), io::Error> {
+        self.assert_can_write()?;
+
+        unimplemented!()
+    }
+}
+
+/// Converts from Async::NotReady to ErrorKind::WouldBlock.
+macro_rules! try_would_block {
+    ($val:expr) => {{
+        match $val? {
+            Async::Ready(result) => Ok(result),
+            Async::NotReady => Err(ErrorKind::WouldBlock.into()),
+        }
+    }};
+}
+
+impl Read for SutpStream {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        try_would_block!(self.try_read(buf))
+    }
+}
+
+impl AsyncRead for SutpStream {}
+
+impl Write for SutpStream {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        try_would_block!(self.try_write(buf))
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        try_would_block!(self.try_flush())
+    }
+}
+
+impl AsyncWrite for SutpStream {
+    fn shutdown(&mut self) -> Poll<(), io::Error> {
+        unimplemented!()
     }
 }
