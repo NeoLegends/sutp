@@ -3,7 +3,6 @@
 
 mod accept;
 mod chunk;
-mod codec;
 mod connect;
 mod listener;
 mod segment;
