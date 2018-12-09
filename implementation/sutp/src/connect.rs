@@ -46,8 +46,11 @@ pub struct Connect {
 
     /// Underlying connection primitives.
     ///
-    /// This is none in the beginning and is constructed during
-    /// the first `.poll()`.
+    /// To honor that futures in Rust are created "cold" and only do things when
+    /// polled, we create the actual networking objects on the first poll instead
+    /// of during construction of this future.
+    ///
+    /// This is when this turns `Some`.
     inner: Option<Inner>,
 }
 
@@ -219,6 +222,10 @@ impl Future for Inner {
     type Error = Error;
 
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
+        // This implementation ping-pongs itself between the two possible states
+        // of the future. In the first one, we send the SYN segment, and in the
+        // second one we wait for and process the response.
+
         loop {
             self.poll_error()?;
 
