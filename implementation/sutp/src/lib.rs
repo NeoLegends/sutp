@@ -4,6 +4,7 @@
 mod accept;
 mod chunk;
 mod connect;
+mod driver;
 mod listener;
 mod segment;
 mod stream;
