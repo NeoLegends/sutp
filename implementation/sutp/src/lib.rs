@@ -16,10 +16,16 @@ pub use crate::{
     stream::SutpStream,
 };
 
-use std::u16;
+use std::{
+    time::Duration,
+    u16,
+};
 
 /// Max size of a UDP datagram.
 const UDP_DGRAM_SIZE: usize = u16::MAX as usize;
+
+/// The timeout for setting up a new connection.
+const CONNECTION_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// Some useful extensions to `Result`.
 trait ResultExt<T, E> {

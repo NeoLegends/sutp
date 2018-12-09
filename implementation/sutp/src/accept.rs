@@ -1,6 +1,7 @@
 //! Implements the future that accepts a new connection.
 
 use crate::{
+    CONNECTION_TIMEOUT,
     chunk::{Chunk, CompressionAlgorithm},
     segment::{Segment, SegmentBuilder},
     stream::SutpStream,
@@ -27,7 +28,6 @@ const MISSING_SGMT: &str = "missing segment";
 const POLLED_TWICE: &str = "cannot poll Accept twice";
 
 const ACK_SEGMENT_TIMEOUT: Duration = Duration::from_secs(2);
-const CONNECTION_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// A future representing an SUTP stream being accepted.
 #[derive(Debug)]
