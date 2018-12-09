@@ -36,7 +36,7 @@ trait ResultExt<T, E> {
     ///     Ok(v)
     /// });
     /// ```
-    fn inspect_mut(self, f: impl FnOnce(&mut T) -> Result<(), E>) -> Result<T, E>;
+    fn inspect_mut(self, f: impl FnOnce(&mut T) -> Result<(), E>) -> Self;
 }
 
 impl<T, E> ResultExt<T, E> for Result<T, E> {
