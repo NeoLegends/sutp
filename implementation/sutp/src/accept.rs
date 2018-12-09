@@ -182,15 +182,14 @@ impl Future for Accept {
 
             // See if the other side has answered
             if maybe_response.is_not_ready() {
-                // If not, send the segment and set a timeout when to try again
-
+                // Only send if we're allowed to
                 try_ready!(self.poll_segment_timeout());
 
+                // If not, send the segment and set a timeout when to try again
                 let sock = self.send_socket.as_mut().expect(POLLED_TWICE);
                 try_ready!(sock.poll_send(&ack_segment_buf));
 
                 self.set_segment_timeout();
-
                 return Ok(Async::NotReady);
             }
 
