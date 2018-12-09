@@ -76,7 +76,7 @@ pub struct Driver {
 }
 
 impl Driver {
-    /// Creates a new driver.
+    /// Creates a new driver that listens for and drives new connections.
     pub fn new(
         socket: UdpSocket,
         io_err: oneshot::Sender<io::Error>,
@@ -86,6 +86,30 @@ impl Driver {
             conn_map: HashMap::new(),
             io_err: Some(io_err),
             new_conn: Some(new_conn),
+            new_conn_fut: None,
+            recv_buf: BytesMut::with_capacity(UDP_DGRAM_SIZE),
+            socket: socket,
+        }
+    }
+
+    /// Creates a new driver driving the given connection.
+    ///
+    /// The driver will not accept new connections.
+    pub fn from_connection(
+        socket: UdpSocket,
+        io_err: oneshot::Sender<io::Error>,
+        (addr, conn_tx): (SocketAddr, mpsc::Sender<Result<Segment, io::Error>>),
+    ) -> Self {
+        let conn_map = {
+            let mut map = HashMap::with_capacity(1);
+            map.insert(addr, conn_tx);
+            map
+        };
+
+        Self {
+            conn_map,
+            io_err: Some(io_err),
+            new_conn: None,
             new_conn_fut: None,
             recv_buf: BytesMut::with_capacity(UDP_DGRAM_SIZE),
             socket: socket,
