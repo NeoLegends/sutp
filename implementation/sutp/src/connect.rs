@@ -249,6 +249,7 @@ impl Future for Inner {
                         Err(e) => return Err(Error::new(ErrorKind::Other, e)),
                     }
 
+                    // Check if the segment is valid and ACKs our first one
                     let response = match try_ready!(self.poll_segment()) {
                         Ok(sgmt) => sgmt,
                         Err(_) => {
@@ -261,6 +262,7 @@ impl Future for Inner {
                         continue;
                     }
 
+                    // Create the actual stream
                     let stream = SutpStream::create(
                         self.recv.take().expect(POLLED_TWICE),
                         self.sock.take().expect(POLLED_TWICE),
