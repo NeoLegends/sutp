@@ -24,6 +24,9 @@ use tokio::{
     net::udp::UdpSocket,
 };
 
+/// The size of the queue for new connections.
+pub const NEW_CONN_QUEUE_SIZE: usize = 8;
+
 // TODO: The 8 here is chosen arbitrarily, but right now this
 // very much affects our performance. If this channel overflows,
 // we don't apply backpressure right now, instead we just discard

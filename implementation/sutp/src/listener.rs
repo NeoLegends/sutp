@@ -1,6 +1,6 @@
 use crate::{
     accept::Accept,
-    driver::Driver,
+    driver::{Driver, NEW_CONN_QUEUE_SIZE},
 };
 use futures::{
     prelude::*,
@@ -15,9 +15,6 @@ use tokio::{
     self,
     net::udp::UdpSocket,
 };
-
-/// The size of the queue for new connections.
-const NEW_CONN_QUEUE_SIZE: usize = 8;
 
 /// A stream of incoming SUTP connections.
 #[derive(Debug)]
