@@ -108,12 +108,7 @@ impl SutpListener {
     /// Panics if not called within a future's execution context or when
     /// polling after an I/O error.
     pub fn poll_accept(&mut self) -> Poll<(Accept, SocketAddr), io::Error> {
-        // Check if there were I/O errors before querying the connection channel
-        match self.io_err.poll() {
-            Ok(Async::Ready(err)) => return Err(err),
-            Ok(Async::NotReady) => {},
-            Err(_) => panic!("driver has gone away"),
-        }
+        self.poll_io_err()?;
 
         // Channel errors can only occur when the sender has been dropped, and
         // this only happens on hard I/O errors.
@@ -121,6 +116,15 @@ impl SutpListener {
             // We're given IO errors as channel items
             Async::Ready(Some(conn)) => Ok(Async::Ready(conn)),
             _ => Ok(Async::NotReady),
+        }
+    }
+
+    /// Checks if there were I/O errors before querying the connection channel
+    fn poll_io_err(&mut self) -> Result<(), io::Error> {
+        match self.io_err.poll() {
+            Ok(Async::Ready(err)) => Err(err),
+            Ok(Async::NotReady) => Ok(()),
+            Err(_) => panic!("driver has gone away"),
         }
     }
 }
