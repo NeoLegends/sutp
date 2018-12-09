@@ -8,7 +8,6 @@ use futures::{
     sync::mpsc,
     try_ready,
 };
-use rand;
 use std::{
     io::{self, Error, ErrorKind, Read, Write},
     net::SocketAddr,
