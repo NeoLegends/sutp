@@ -2,6 +2,7 @@
 
 use crate::{
     CONNECTION_TIMEOUT,
+    RESPONSE_SEGMENT_TIMEOUT,
     chunk::{Chunk, CompressionAlgorithm},
     segment::{Segment, SegmentBuilder},
     stream::SutpStream,
@@ -15,7 +16,6 @@ use rand;
 use std::{
     io::{self, Error, ErrorKind},
     num::Wrapping,
-    time::Duration,
 };
 use tokio::{
     clock,
@@ -26,8 +26,6 @@ use tokio::{
 const DRIVER_AWAY: &str = "driver has gone away";
 const MISSING_SGMT: &str = "missing segment";
 const POLLED_TWICE: &str = "cannot poll Accept twice";
-
-const ACK_SEGMENT_TIMEOUT: Duration = Duration::from_secs(2);
 
 /// A future representing an SUTP stream being accepted.
 #[derive(Debug)]
@@ -161,7 +159,7 @@ impl Accept {
 
     /// Sets the timeout for a single ACK RTT.
     fn set_segment_timeout(&mut self) {
-        let ack_elapsed_at = clock::now() + ACK_SEGMENT_TIMEOUT;
+        let ack_elapsed_at = clock::now() + RESPONSE_SEGMENT_TIMEOUT;
         self.ack_timeout = Some(Delay::new(ack_elapsed_at));
     }
 }

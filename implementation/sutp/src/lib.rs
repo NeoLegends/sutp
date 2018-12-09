@@ -27,6 +27,9 @@ const UDP_DGRAM_SIZE: usize = u16::MAX as usize;
 /// The timeout for setting up a new connection.
 const CONNECTION_TIMEOUT: Duration = Duration::from_secs(30);
 
+/// The timeout for receiving the response to a segment.
+const RESPONSE_SEGMENT_TIMEOUT: Duration = Duration::from_secs(2);
+
 /// Some useful extensions to `Result`.
 trait ResultExt<T, E> {
     /// Allows mutable transformation on the value, without requiring the value
