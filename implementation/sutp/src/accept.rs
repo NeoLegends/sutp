@@ -31,6 +31,7 @@ const CONNECTION_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// A future representing an SUTP stream being accepted.
 #[derive(Debug)]
+#[must_use = "futures do nothing unless polled"]
 pub struct Accept {
     /// The segment, ACKing the first, in serialized form and its sequence number.
     ack_segment: Option<Vec<u8>>,

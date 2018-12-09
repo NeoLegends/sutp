@@ -18,6 +18,7 @@ use tokio::{
 
 /// A stream of incoming SUTP connections.
 #[derive(Debug)]
+#[must_use = "futures do nothing unless polled"]
 pub struct Incoming {
     listener: SutpListener,
 }
