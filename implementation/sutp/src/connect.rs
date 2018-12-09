@@ -107,16 +107,11 @@ impl Future for Connect {
     type Error = Error;
 
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-        // Set up initial state
-        let conn = match self.inner.as_mut() {
-            Some(c) => c,
-            None => {
-                self.inner = Some(Inner::new(&self.addr)?);
-                self.inner.as_mut().unwrap()
-            }
-        };
+        if self.inner.is_none() {
+            self.inner = Some(Inner::new(&self.addr)?);
+        }
 
-        conn.poll()
+        self.inner.as_mut().unwrap().poll()
     }
 }
 
