@@ -249,8 +249,14 @@ impl Future for Inner {
                         Err(e) => return Err(Error::new(ErrorKind::Other, e)),
                     }
 
-                    let response = try_ready!(self.poll_segment())?;
-                    if !response.acks(self.local_seq_no.0) {
+                    let response = match try_ready!(self.poll_segment()) {
+                        Ok(sgmt) => sgmt,
+                        Err(_) => {
+                            self.state = State::Start;
+                            continue;
+                        },
+                    };
+                    if !response.is_syn2_and_acks(self.local_seq_no.0) {
                         self.state = State::Start;
                         continue;
                     }

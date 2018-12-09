@@ -85,17 +85,11 @@ impl Segment {
     /// Checks whether the segment can be classified as a "<-SYN" or "SYN 2"
     /// segment. That is, the second segment sent in response to the first
     /// segment on the wire.
-    pub fn is_syn2(&self, syn1_seq_no: u32) -> bool {
+    pub fn is_syn2_and_acks(&self, syn1_seq_no: u32) -> bool {
         let contains_syn = self.chunks.iter()
             .any(|ch| ch.is_syn());
-        let contains_acking_sack = self.chunks.iter()
-            .filter(|ch| ch.is_sack())
-            .any(|sack| match sack {
-                Chunk::Sack(ack_no, _) => *ack_no == syn1_seq_no,
-                _ => unreachable!(),
-            });
 
-        contains_syn && contains_acking_sack
+        contains_syn && self.acks(syn1_seq_no)
     }
 
     /// Selects the most-preferred supported compression algorithm, if one is present.
