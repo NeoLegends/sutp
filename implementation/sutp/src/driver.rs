@@ -101,7 +101,8 @@ impl Driver {
     pub fn from_connection(
         socket: UdpSocket,
         io_err: oneshot::Sender<io::Error>,
-        (addr, conn_tx): (SocketAddr, mpsc::Sender<Result<Segment, io::Error>>),
+        addr: SocketAddr,
+        conn_tx: mpsc::Sender<Result<Segment, io::Error>>,
     ) -> Self {
         let conn_map = {
             let mut map = HashMap::with_capacity(1);
