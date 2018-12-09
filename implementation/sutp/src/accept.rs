@@ -32,6 +32,9 @@ const CONNECTION_TIMEOUT: Duration = Duration::from_secs(30);
 /// A future representing an SUTP stream being accepted.
 #[derive(Debug)]
 pub struct Accept {
+    /// The segment, ACKing the first, in serialized form and its sequence number.
+    ack_segment: Option<Vec<u8>>,
+
     /// The timeout guarding the send / response of a single ACK response.
     ///
     /// When this elapses, the response will be re-sent.
@@ -56,21 +59,6 @@ pub struct Accept {
 
     /// The socket to send segments over.
     send_socket: Option<UdpSocket>,
-
-    /// The current state of the future.
-    state: AcceptState,
-}
-
-/// States of the protocol automaton during the connection set-up phase.
-#[derive(Clone, Debug, Eq, Hash, PartialEq)]
-enum AcceptState {
-    /// The SYN-> was received and needs to be parsed.
-    SynRcvd,
-
-    /// The ACK was sent and we're waiting for segment number 3.
-    ///
-    /// Option dance for borrow checker.
-    SendAck(Option<Segment>),
 }
 
 impl Accept {
@@ -82,6 +70,7 @@ impl Accept {
         recv: mpsc::Receiver<Result<Segment, Error>>,
     ) -> Self {
         Self {
+            ack_segment: None,
             ack_timeout: None,
             compression_algorithm: None,
             conn_timeout: None,
@@ -89,7 +78,6 @@ impl Accept {
             recv: Some(recv),
             remote_sq_no: Wrapping(0),
             send_socket: Some(sock),
-            state: AcceptState::SynRcvd,
         }
     }
 
@@ -120,12 +108,13 @@ impl Accept {
     ///
     /// Panics if the receiver stream has ended. This shouldn't happen
     /// normally, though.
-    fn poll_segment(&mut self) -> Async<Result<Segment, Error>> {
-        self.recv.as_mut()
+    fn poll_segment(&mut self) -> Poll<Result<Segment, Error>, Error> {
+        let val = self.recv.as_mut()
             .expect(POLLED_TWICE)
             .poll()
             .expect(DRIVER_AWAY)
-            .map(|maybe_segment| maybe_segment.expect(MISSING_SGMT))
+            .map(|maybe_segment| maybe_segment.expect(MISSING_SGMT));
+        Ok(val)
     }
 
     /// Polls the delay future for a single segment.
@@ -141,6 +130,31 @@ impl Accept {
         }
 
         self.ack_timeout = None;
+        Ok(Async::Ready(()))
+    }
+
+    /// Sets up the response segment ACKing the first.
+    ///
+    /// This is only done once, on the first poll of the future.
+    fn poll_setup_response(&mut self) -> Poll<(), Error> {
+        let segment = try_ready!(self.poll_segment())?;
+
+        // First properly assign remote state and inspect their use of compression
+        self.remote_sq_no = Wrapping(segment.seq_no);
+        self.compression_algorithm = segment.select_compression_alg();
+
+        // Build a SYN+ACK response
+        // TODO: Use a real value for the window size
+        let mut builder = SegmentBuilder::new()
+            .seq_no(self.local_sq_no.0)
+            .window_size(1024 * 16)
+            .with_chunk(Chunk::Syn)
+            .with_chunk(Chunk::Sack(self.remote_sq_no.0, Vec::new()));
+        if let Some(alg) = self.compression_algorithm {
+            builder = builder.with_chunk(alg.into_chunk());
+        }
+
+        self.ack_segment = Some(builder.build().to_vec());
         Ok(Async::Ready(()))
     }
 
@@ -160,89 +174,65 @@ impl Future for Accept {
         self.poll_connection_timeout()?;
 
         loop {
-            match &mut self.state {
-                AcceptState::SynRcvd => {
-                    let segment = ready!(self.poll_segment())?;
-
-                    // First properly assign remote state and inspect their use
-                    // of compression.
-                    self.remote_sq_no = Wrapping(segment.seq_no);
-                    self.compression_algorithm = segment.select_compression_alg();
-
-                    // Build a SYN+ACK response
-                    // TODO: Use a real value for the window size
-                    let mut builder = SegmentBuilder::new()
-                        .seq_no(self.local_sq_no.0)
-                        .window_size(1024 * 16)
-                        .with_chunk(Chunk::Syn)
-                        .with_chunk(Chunk::Sack(self.remote_sq_no.0, Vec::new()));
-                    if let Some(alg) = self.compression_algorithm {
-                        builder = builder.with_chunk(alg.into_chunk());
-                    }
-
-                    self.state = AcceptState::SendAck(Some(builder.build()));
-                },
-
-                AcceptState::SendAck(segment) => {
-                    // Borrow checker option dance
-                    let segment = segment.take().unwrap();
-                    let maybe_response = self.poll_segment();
-
-                    // See if the other side has answered
-                    if maybe_response.is_not_ready() {
-                        // If not, send the segment and set a timeout when to try again
-
-                        try_ready!(self.poll_segment_timeout());
-
-                        let sock = self.send_socket.as_mut().expect(POLLED_TWICE);
-                        try_ready!(sock.poll_send(&segment.to_vec()));
-
-                        self.set_segment_timeout();
-
-                        self.state = AcceptState::SendAck(Some(segment));
-                        return Ok(Async::NotReady);
-                    }
-
-                    // ...and if the answer is valid
-                    let ack_segment = match maybe_response {
-                        Async::Ready(maybe_segment) => maybe_segment?,
-                        _ => unreachable!(),
-                    };
-
-                    // Retry if the other side didn't receive the segment properly
-                    if !ack_segment.acks(&segment) {
-                        self.ack_timeout = None;
-                        continue;
-                    }
-
-                    // Use a temporary channel to put the received segment back
-                    // into a channel. This simplifies the implementation in the
-                    // stream.
-                    let (tx, rx) = {
-                        let (mut tx, rx) = mpsc::channel(0);
-                        tx.try_send(Ok(ack_segment))
-                            .expect("failed to re-enqueue 3rd segment");
-
-                        (tx.sink_map_err(|e| panic!("channel tx err: {:?}", e)), rx)
-                    };
-                    tokio::spawn(
-                        self.recv.take()
-                            .expect(POLLED_TWICE)
-                            .forward(tx)
-                            .map(|_| ())
-                    );
-
-                    // Build up the actual stream and resolve the future
-                    let stream = SutpStream::from_accept(
-                        rx,
-                        self.send_socket.take().expect(POLLED_TWICE),
-                        self.local_sq_no + Wrapping(1),
-                        self.remote_sq_no,
-                        self.compression_algorithm,
-                    );
-                    return Ok(Async::Ready(stream));
-                },
+            if self.ack_segment.is_none() {
+                try_ready!(self.poll_setup_response());
             }
+
+            let ack_segment_buf = self.ack_segment.clone().unwrap();
+            let maybe_response = self.poll_segment()?;
+
+            // See if the other side has answered
+            if maybe_response.is_not_ready() {
+                // If not, send the segment and set a timeout when to try again
+
+                try_ready!(self.poll_segment_timeout());
+
+                let sock = self.send_socket.as_mut().expect(POLLED_TWICE);
+                try_ready!(sock.poll_send(&ack_segment_buf));
+
+                self.set_segment_timeout();
+
+                return Ok(Async::NotReady);
+            }
+
+            // ...and if the answer is valid
+            let ack_segment = match maybe_response {
+                Async::Ready(maybe_segment) => maybe_segment?,
+                _ => unreachable!(),
+            };
+
+            // Retry if the other side didn't receive the segment properly
+            if !ack_segment.acks(self.local_sq_no.0) {
+                self.ack_timeout = None;
+                continue;
+            }
+
+            // Use a temporary channel to put the received segment back
+            // into a channel. This simplifies the implementation in the
+            // stream.
+            let (tx, rx) = {
+                let (mut tx, rx) = mpsc::channel(0);
+                tx.try_send(Ok(ack_segment))
+                    .expect("failed to re-enqueue 3rd segment");
+
+                (tx.sink_map_err(|e| panic!("channel tx err: {:?}", e)), rx)
+            };
+            tokio::spawn(
+                self.recv.take()
+                    .expect(POLLED_TWICE)
+                    .forward(tx)
+                    .map(|_| ())
+            );
+
+            // Build up the actual stream and resolve the future
+            let stream = SutpStream::from_accept(
+                rx,
+                self.send_socket.take().expect(POLLED_TWICE),
+                self.local_sq_no + Wrapping(1),
+                self.remote_sq_no,
+                self.compression_algorithm,
+            );
+            return Ok(Async::Ready(stream));
         }
     }
 }

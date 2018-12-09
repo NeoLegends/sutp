@@ -56,7 +56,7 @@ pub struct ValidationError {
 
 impl Segment {
     /// Checks whether this segment ACKs the given one.
-    pub fn acks(&self, other: &Segment) -> bool {
+    pub fn acks(&self, other_sq_no: u32) -> bool {
         self.chunks.iter()
             .filter(|ch| ch.is_sack())
             .map(|ch| match ch {
@@ -65,8 +65,8 @@ impl Segment {
             })
             .any(|(&ack, nak_list)| {
                 let is_nakd = nak_list.iter()
-                    .any(|&nak| other.seq_no == nak);
-                !is_nakd && ack >= other.seq_no
+                    .any(|&nak| other_sq_no == nak);
+                !is_nakd && ack >= other_sq_no
             })
     }
 
