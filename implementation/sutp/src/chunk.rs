@@ -9,6 +9,12 @@ use std::{
     u16,
 };
 
+/// A list of supported compression algorithms in order of preference.
+pub const SUPPORTED_COMPRESSION_ALGS: [CompressionAlgorithm; 2] = [
+    CompressionAlgorithm::Snappy,
+    CompressionAlgorithm::Gzip,
+];
+
 // TODO: Refactor this to use the Bytes struct instead of reading from
 // an io::Read for better efficiency (because we can save the copying).
 
