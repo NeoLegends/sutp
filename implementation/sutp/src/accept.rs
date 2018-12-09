@@ -49,13 +49,13 @@ pub struct Accept {
     conn_timeout: Option<Delay>,
 
     /// The current local sequence number.
-    local_sq_no: Wrapping<u32>,
+    local_seq_no: Wrapping<u32>,
 
     /// The channel of incoming segments.
     recv: Option<mpsc::Receiver<Result<Segment, io::Error>>>,
 
     /// The current remote sequence number.
-    remote_sq_no: Wrapping<u32>,
+    remote_seq_no: Wrapping<u32>,
 
     /// The socket to send segments over.
     send_socket: Option<UdpSocket>,
@@ -74,9 +74,9 @@ impl Accept {
             ack_timeout: None,
             compression_algorithm: None,
             conn_timeout: None,
-            local_sq_no: Wrapping(rand::random()),
+            local_seq_no: Wrapping(rand::random()),
             recv: Some(recv),
-            remote_sq_no: Wrapping(0),
+            remote_seq_no: Wrapping(0),
             send_socket: Some(sock),
         }
     }
@@ -140,16 +140,16 @@ impl Accept {
         let segment = try_ready!(self.poll_segment())?;
 
         // First properly assign remote state and inspect their use of compression
-        self.remote_sq_no = Wrapping(segment.seq_no);
+        self.remote_seq_no = Wrapping(segment.seq_no);
         self.compression_algorithm = segment.select_compression_alg();
 
         // Build a SYN+ACK response
         // TODO: Use a real value for the window size
         let mut builder = SegmentBuilder::new()
-            .seq_no(self.local_sq_no.0)
+            .seq_no(self.local_seq_no.0)
             .window_size(1024 * 16)
             .with_chunk(Chunk::Syn)
-            .with_chunk(Chunk::Sack(self.remote_sq_no.0, Vec::new()));
+            .with_chunk(Chunk::Sack(self.remote_seq_no.0, Vec::new()));
         if let Some(alg) = self.compression_algorithm {
             builder = builder.with_chunk(alg.into_chunk());
         }
@@ -202,7 +202,7 @@ impl Future for Accept {
             };
 
             // Retry if the other side didn't receive the segment properly
-            if !ack_segment.acks(self.local_sq_no.0) {
+            if !ack_segment.acks(self.local_seq_no.0) {
                 self.ack_timeout = None;
                 continue;
             }
@@ -228,8 +228,8 @@ impl Future for Accept {
             let stream = SutpStream::from_accept(
                 rx,
                 self.send_socket.take().expect(POLLED_TWICE),
-                self.local_sq_no + Wrapping(1),
-                self.remote_sq_no,
+                self.local_seq_no + Wrapping(1),
+                self.remote_seq_no,
                 self.compression_algorithm,
             );
             return Ok(Async::Ready(stream));

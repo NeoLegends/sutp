@@ -56,7 +56,7 @@ pub struct ValidationError {
 
 impl Segment {
     /// Checks whether this segment ACKs the given one.
-    pub fn acks(&self, other_sq_no: u32) -> bool {
+    pub fn acks(&self, other_seq_no: u32) -> bool {
         self.chunks.iter()
             .filter(|ch| ch.is_sack())
             .map(|ch| match ch {
@@ -65,8 +65,8 @@ impl Segment {
             })
             .any(|(&ack, nak_list)| {
                 let is_nakd = nak_list.iter()
-                    .any(|&nak| other_sq_no == nak);
-                !is_nakd && ack >= other_sq_no
+                    .any(|&nak| other_seq_no == nak);
+                !is_nakd && ack >= other_seq_no
             })
     }
 
@@ -85,13 +85,13 @@ impl Segment {
     /// Checks whether the segment can be classified as a "<-SYN" or "SYN 2"
     /// segment. That is, the second segment sent in response to the first
     /// segment on the wire.
-    pub fn is_syn2(&self, syn1_sq_no: u32) -> bool {
+    pub fn is_syn2(&self, syn1_seq_no: u32) -> bool {
         let contains_syn = self.chunks.iter()
             .any(|ch| ch.is_syn());
         let contains_acking_sack = self.chunks.iter()
             .filter(|ch| ch.is_sack())
             .any(|sack| match sack {
-                Chunk::Sack(ack_no, _) => *ack_no == syn1_sq_no,
+                Chunk::Sack(ack_no, _) => *ack_no == syn1_seq_no,
                 _ => unreachable!(),
             });
 
@@ -180,7 +180,7 @@ impl Segment {
     /// It is strongly advised to pass a buffering `io.Read` implementation
     /// since the parser will issue lots of small calls to `read`.
     pub fn read_from(r: &mut impl Read) -> io::Result<Segment> {
-        let sq_no = r.read_u32::<NetworkEndian>()?;
+        let seq_no = r.read_u32::<NetworkEndian>()?;
         let window_size = r.read_u32::<NetworkEndian>()?;
 
         let mut chunk_list = Vec::new();
@@ -190,7 +190,7 @@ impl Segment {
 
         Ok(Segment {
             chunks: chunk_list,
-            seq_no: sq_no,
+            seq_no: seq_no,
             window_size: window_size,
         })
     }
@@ -302,8 +302,8 @@ impl SegmentBuilder {
     }
 
     /// Sets the sequence number.
-    pub fn seq_no(mut self, sq_no: u32) -> Self {
-        self.seq_no = Some(sq_no);
+    pub fn seq_no(mut self, seq_no: u32) -> Self {
+        self.seq_no = Some(seq_no);
         self
     }
 

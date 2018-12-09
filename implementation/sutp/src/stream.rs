@@ -22,9 +22,9 @@ use tokio::{
 #[derive(Debug)]
 pub struct SutpStream {
     compression_algorithm: Option<CompressionAlgorithm>,
-    local_sq_no: Wrapping<u32>,
+    local_seq_no: Wrapping<u32>,
     recv: mpsc::Receiver<Result<Segment, io::Error>>,
-    remote_sq_no: Wrapping<u32>,
+    remote_seq_no: Wrapping<u32>,
     send_socket: UdpSocket,
     state: StreamState,
 }
@@ -60,15 +60,15 @@ impl SutpStream {
     pub(crate) fn from_accept(
         recv: mpsc::Receiver<Result<Segment, Error>>,
         sock: UdpSocket,
-        local_sq_no: Wrapping<u32>,
-        remote_sq_no: Wrapping<u32>,
+        local_seq_no: Wrapping<u32>,
+        remote_seq_no: Wrapping<u32>,
         compression_alg: Option<CompressionAlgorithm>,
     ) -> Self {
         Self {
             compression_algorithm: compression_alg,
-            local_sq_no,
+            local_seq_no,
             recv,
-            remote_sq_no,
+            remote_seq_no,
             send_socket: sock,
             state: StreamState::Open,
         }
