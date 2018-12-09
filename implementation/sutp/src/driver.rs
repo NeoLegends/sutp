@@ -101,12 +101,12 @@ impl Driver {
     pub fn from_connection(
         socket: UdpSocket,
         io_err: oneshot::Sender<io::Error>,
-        addr: SocketAddr,
+        addr: &SocketAddr,
         conn_tx: mpsc::Sender<Result<Segment, io::Error>>,
     ) -> Self {
         let conn_map = {
             let mut map = HashMap::with_capacity(1);
-            map.insert(addr, conn_tx);
+            map.insert(*addr, conn_tx);
             map
         };
 
