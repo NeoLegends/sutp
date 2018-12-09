@@ -143,7 +143,7 @@ impl Inner {
             Delay::new(elapsed_at)
         };
         let seq_no = Wrapping(rand::random());
-        let sgmt_buf = {
+        let initial_sgmt_buf = {
             let comp_algs = SUPPORTED_COMPRESSION_ALGS.as_ref().into();
             SegmentBuilder::new()
                 .seq_no(seq_no.0)
@@ -158,7 +158,7 @@ impl Inner {
 
         Ok(Self {
             io_err: Some(err_rx),
-            init_segment_buf: sgmt_buf,
+            init_segment_buf: initial_sgmt_buf,
             local_seq_no: seq_no,
             recv: Some(sgmt_rx),
             remote_seq_no: Wrapping(0),
