@@ -53,8 +53,8 @@ impl SutpStream {
     ///
     /// When the returned future completes, the stream has been established
     /// and can be used to transmit data.
-    pub fn connect(_addr: &SocketAddr) -> Connect {
-        unimplemented!()
+    pub fn connect(addr: &SocketAddr) -> Connect {
+        Connect::new(addr)
     }
 
     pub(crate) fn create(
