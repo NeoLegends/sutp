@@ -133,6 +133,13 @@ impl Driver {
         let maybe_segment = Segment::read_from_and_validate(&mut buf);
         Ok(Async::Ready((maybe_segment, addr)))
     }
+
+    /// Determines whether the driver can still perform work or should quit.
+    fn should_quit(&self) -> bool {
+        self.new_conn.is_none() &&
+            self.new_conn_fut.is_none() &&
+            self.conn_map.is_empty()
+    }
 }
 
 /// DRY-macro for hard I/O errors within the driver.
@@ -163,9 +170,7 @@ impl Future for Driver {
             // If the new_conn channel is closed and the connection map is empty
             // we need to shut down, because everything has been dropped and
             // there's nothing to forward data to.
-            if self.new_conn.is_none() &&
-                self.new_conn_fut.is_none() &&
-                self.conn_map.is_empty() {
+            if self.should_quit() {
                 return Ok(Async::Ready(()));
             }
 
