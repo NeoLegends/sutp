@@ -223,7 +223,7 @@ impl Future for Accept {
             );
 
             // Build up the actual stream and resolve the future
-            let stream = SutpStream::from_accept(
+            let stream = SutpStream::create(
                 rx,
                 self.send_socket.take().expect(POLLED_TWICE),
                 self.local_seq_no + Wrapping(1),

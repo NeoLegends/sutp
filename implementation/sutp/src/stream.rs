@@ -57,7 +57,7 @@ impl SutpStream {
         unimplemented!()
     }
 
-    pub(crate) fn from_accept(
+    pub(crate) fn create(
         recv: mpsc::Receiver<Result<Segment, Error>>,
         sock: UdpSocket,
         local_seq_no: Wrapping<u32>,
