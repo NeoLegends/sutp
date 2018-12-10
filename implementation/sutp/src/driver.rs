@@ -16,7 +16,7 @@ use futures::{
 use log::{trace, warn};
 use std::{
     collections::HashMap,
-    io::{self, Cursor},
+    io,
     net::SocketAddr,
 };
 use tokio::{
@@ -131,9 +131,7 @@ impl Driver {
             self.socket.poll_recv_from(&mut self.recv_buf)
         });
 
-        let mut buf = self.recv_buf.split_to(nread);
-        let mut buf = Cursor::new(buf.as_mut());
-
+        let mut buf = self.recv_buf.split_to(nread).freeze();
         let maybe_segment = Segment::read_from_and_validate(&mut buf);
         Ok(Async::Ready((maybe_segment, addr)))
     }

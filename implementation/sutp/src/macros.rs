@@ -1,3 +1,13 @@
+/// Asserts that the given buffer has enough remaining capacity and
+/// otherwise returns UnexpectedEof.
+macro_rules! assert_size {
+    ($buf:expr, $size:expr) => {{
+        if $buf.remaining() < $size {
+            return Err(::std::io::ErrorKind::UnexpectedEof.into());
+        }
+    }};
+}
+
 macro_rules! debug_log_assert {
     ($a:expr) => {
         if !$a {

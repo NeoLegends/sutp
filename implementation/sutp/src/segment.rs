@@ -1,16 +1,18 @@
 //! This module implements the data format of segments as specified in
 //! https://laboratory.comsys.rwth-aachen.de/sutp/data-format/blob/master/README.md.
 
-use byteorder::{NetworkEndian, ReadBytesExt, WriteBytesExt};
+use byteorder::{ByteOrder, NetworkEndian, WriteBytesExt};
+use bytes::{Buf, Bytes, IntoBuf};
 use crate::{
     ResultExt,
     chunk::{Chunk, CompressionAlgorithm},
 };
-use flate2::{CrcReader, CrcWriter};
+use flate2::{Crc, CrcWriter};
 use std::{
     error::Error as StdError,
     fmt::{Display, Formatter, Result as FmtResult},
-    io::{self, Cursor, Error, ErrorKind, Read, Write}
+    io::{self, Cursor, Error, ErrorKind, Write},
+    mem,
 };
 
 /// An SUTP segment.
@@ -169,13 +171,13 @@ impl Segment {
 }
 
 impl Segment {
-    /// Reads a segment from the given reader.
-    ///
-    /// It is strongly advised to pass a buffering `io.Read` implementation
-    /// since the parser will issue lots of small calls to `read`.
-    pub fn read_from(r: &mut impl Read) -> io::Result<Segment> {
-        let seq_no = r.read_u32::<NetworkEndian>()?;
-        let window_size = r.read_u32::<NetworkEndian>()?;
+    /// Reads a segment from the given buffer.
+    pub fn read_from(r: &mut Bytes) -> io::Result<Segment> {
+        let mut buf = r.as_ref().into_buf();
+        assert_size!(buf, mem::size_of::<u32>() * 2);
+
+        let seq_no = buf.get_u32_be();
+        let window_size = buf.get_u32_be();
 
         let mut chunk_list = Vec::new();
         while let Some(ch) = Chunk::read_from(r)? {
@@ -189,28 +191,37 @@ impl Segment {
         })
     }
 
-    /// Reads a segment from the given reader and verifies the CRC-32 signature.
-    ///
-    /// It is strongly advised to pass a buffering `io.Read` implementation
-    /// since the parser will issue lots of small calls to `read`.
-    pub fn read_from_with_crc32(r: &mut impl Read) -> io::Result<Segment> {
-        let mut crc_reader = CrcReader::new(r);
-        let segment = Self::read_from(&mut crc_reader)?;
+    /// Reads a segment from the given buffer and verifies the CRC-32 signature.
+    pub fn read_from_with_crc32(r: &mut Bytes) -> io::Result<Segment> {
+        const U32_SIZE: usize = mem::size_of::<u32>();
 
-        let data_crc_sum = crc_reader.crc().sum();
-        let segment_crc_sum = crc_reader.into_inner().read_u32::<NetworkEndian>()?;
+        if r.len() < U32_SIZE {
+            return Err(io::ErrorKind::UnexpectedEof.into());
+        }
 
-        if data_crc_sum != segment_crc_sum {
+        let (data_part, crc_part) = {
+            let slice = &r;
+            slice.split_at(slice.len() - U32_SIZE)
+        };
+        let actual_crc = {
+            let mut crc = Crc::new();
+            crc.update(data_part);
+            crc.sum()
+        };
+        let expected_crc = NetworkEndian::read_u32(crc_part);
+
+        if actual_crc != expected_crc {
             return Err(Error::new(
                 ErrorKind::InvalidData,
                 format!(
                     "crc32 sum mismatch: got {:X}, wanted {:X}",
-                    segment_crc_sum,
-                    data_crc_sum,
+                    actual_crc,
+                    expected_crc,
                 ),
             ));
         }
 
+        let segment = Self::read_from(r)?;
         Ok(segment)
     }
 
@@ -221,7 +232,7 @@ impl Segment {
     ///
     /// It is strongly advised to pass a buffering `io.Read` implementation
     /// since the parser will issue lots of small calls to `read`.
-    pub fn read_from_and_validate(r: &mut impl Read) -> io::Result<Segment> {
+    pub fn read_from_and_validate(r: &mut Bytes) -> io::Result<Segment> {
         Self::read_from_with_crc32(r)
             .inspect_mut(|segment| {
                 segment.validate()
@@ -372,7 +383,7 @@ impl StdError for ValidationError {}
 
 #[cfg(test)]
 mod tests {
-    use std::io::{Cursor, ErrorKind};
+    use std::io::ErrorKind;
     use super::*;
 
     #[test]
@@ -436,7 +447,7 @@ mod tests {
     /// Ensure we cannot read data from nothing.
     #[test]
     fn zero_input() {
-        let mut data = Cursor::new(vec![]);
+        let mut data = Bytes::new();
 
         match Segment::read_from(&mut data) {
             Ok(_) => panic!("Read segment from empty data."),
