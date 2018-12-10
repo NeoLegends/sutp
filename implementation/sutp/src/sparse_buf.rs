@@ -75,6 +75,17 @@ impl<T, F> SparseBuffer<T, F> {
         }
     }
 
+    /// Returns the amount of elements that can be `.pop()`ed without
+    /// receiving `None`.
+    pub fn available(&self) -> usize {
+        self.buf.iter()
+            .cycle() // Ensure we wrap around at the end
+            .skip(self.head) // Skip to the head
+            .take(self.capacity()) // Ensure we're bounded
+            .take_while(|slot| slot.is_some()) // and count the full slots
+            .count()
+    }
+
     /// Returns the capacity of the buffer.
     pub fn capacity(&self) -> usize {
         self.buf.capacity()
@@ -201,7 +212,14 @@ impl<'a, T, F: Fn(&T) -> usize> Iterator for Drain<'a, T, F> {
     fn next(&mut self) -> Option<Self::Item> {
         self.buf.pop()
     }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let available = self.buf.available();
+        (available, Some(available))
+    }
 }
+
+impl<'a, T, F: Fn(&T) -> usize> ExactSizeIterator for Drain<'a, T, F> {}
 
 impl<T> InsertError<T> {
     /// Checks if the error represents the "distance too large" variant.
@@ -253,6 +271,30 @@ impl<T: Debug> Error for InsertError<T> {}
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn available() {
+        let mut buf = SparseBuffer::new(3, |v: &usize| *v);
+
+        assert!(buf.is_empty());
+
+        assert_eq!({ buf.drain().size_hint() }, (0, Some(0)));
+
+        buf.push(3).unwrap();
+        assert_eq!({ buf.drain().size_hint() }, (1, Some(1)));
+
+        buf.push(4).unwrap();
+        assert_eq!({ buf.drain().size_hint() }, (2, Some(2)));
+
+        buf.push(5).unwrap();
+        assert_eq!({ buf.drain().size_hint() }, (3, Some(3)));
+
+        buf.pop().unwrap();
+        assert_eq!({ buf.drain().size_hint() }, (2, Some(2)));
+
+        buf.push(6).unwrap();
+        assert_eq!({ buf.drain().size_hint() }, (3, Some(3)));
+    }
 
     #[test]
     fn smoke() {
