@@ -324,7 +324,7 @@ mod tests {
     fn drain_and_fill() {
         let mut buf = SparseBuffer::new(5, |v: &usize| *v);
 
-        for i in 0..3 {
+        for i in 0..100 {
             assert!(buf.is_empty());
 
             buf.push(i * 3 + 3).unwrap();
