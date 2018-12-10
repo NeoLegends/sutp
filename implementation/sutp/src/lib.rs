@@ -7,6 +7,7 @@ mod connect;
 mod driver;
 mod listener;
 mod segment;
+mod sparse_buf;
 mod stream;
 
 pub use crate::{
