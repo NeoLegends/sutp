@@ -91,6 +91,16 @@ impl<T, F> SparseBuffer<T, F> {
         self.buf.capacity()
     }
 
+    /// The amount of slots filled.
+    ///
+    /// Note that the elements aren't necessarily `.pop()`able due to possible
+    /// holes in the buffer.
+    pub fn count(&self) -> usize {
+        self.buf.iter()
+            .filter(|slot| slot.is_some())
+            .count()
+    }
+
     /// Resets the sparse buffer to its initial state.
     pub fn clear(&mut self) {
         for it in &mut self.buf {
