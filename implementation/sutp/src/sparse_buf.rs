@@ -3,11 +3,7 @@ use std::{
     fmt::{Debug, Display, Formatter, Result as FmtResult},
 };
 
-/// A sparse, sorted ring-like buffer.
-///
-/// SUTP guarantees in-order delivery. Since network packets can be lost, reordered
-/// and duplicated, we need a mechanism to reorder and fill holes as the segments
-/// arrive.
+/// A sparse, sorted ring-like buffer using a key function.
 ///
 /// This buffer represents a sorted ring of slots that can be either filled or
 /// empty. When an element is inserted, its position is computed using an external
