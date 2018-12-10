@@ -132,6 +132,8 @@ impl<T, F: Fn(&T) -> usize> SparseBuffer<T, F> {
         } else if self.buf.iter().all(|slot| slot.is_none()) {
             // Note: Can't use self.is_empty() here because we're recomputing the
             // value is_empty() relies on.
+            //
+            // TODO: Can we get this down to `O(1)`?
 
             None
         } else {
