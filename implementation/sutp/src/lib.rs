@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 // Macros need to lexically come before the rest to be usable
 #[macro_use] mod macros;
 
