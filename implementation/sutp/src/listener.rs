@@ -119,7 +119,7 @@ impl SutpListener {
         }
     }
 
-    /// Checks if there were I/O errors before querying the connection channel
+    /// Checks if the driver reported hard I/O errors.
     fn poll_io_err(&mut self) -> Result<(), io::Error> {
         match self.io_err.poll() {
             Ok(Async::Ready(err)) => Err(err),
