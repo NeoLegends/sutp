@@ -107,7 +107,8 @@ impl Segment {
         contains_syn && self.acks(syn1_seq_no)
     }
 
-    /// Selects the most-preferred supported compression algorithm, if one is present.
+    /// Selects the most-preferred supported compression algorithm,
+    /// if one is present.
     pub fn select_compression_alg(&self) -> Option<CompressionAlgorithm> {
         self.chunks.iter()
             .filter(|ch| ch.is_compression_negotiation())
