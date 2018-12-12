@@ -32,6 +32,9 @@ pub struct SutpListener {
     /// A channel receiving newly opened connections.
     conn_recv: mpsc::Receiver<(Accept, SocketAddr)>,
 
+    /// The driver to spawn on the first call to `.poll_accept()`.
+    driver: Option<Driver>,
+
     /// A channel receiving hard I/O errors.
     io_err: oneshot::Receiver<io::Error>,
 }
@@ -66,28 +69,19 @@ impl Stream for Incoming {
 
 impl SutpListener {
     /// Creates a socket bound to the given address and listens on it.
-    ///
-    /// ## Panics
-    ///
-    /// Panics if the listener driver cannot be spawned onto the default executor.
     pub fn bind(address: &SocketAddr) -> io::Result<Self> {
         UdpSocket::bind(address)
             .map(Self::from_socket)
     }
 
     /// Binds the listener to the given UDP socket.
-    ///
-    /// ## Panics
-    ///
-    /// Panics if the listener driver cannot be spawned onto the default executor.
     pub fn from_socket(socket: UdpSocket) -> Self {
         let (io_err_tx, io_err_rx) = oneshot::channel();
         let (new_conn_tx, new_conn_rx) = mpsc::channel(NEW_CONN_QUEUE_SIZE);
 
-        tokio::spawn(Driver::new(socket, io_err_tx, new_conn_tx));
-
         Self {
             conn_recv: new_conn_rx,
+            driver: Some(Driver::new(socket, io_err_tx, new_conn_tx)),
             io_err: io_err_rx,
         }
     }
@@ -108,6 +102,7 @@ impl SutpListener {
     /// Panics if not called within a future's execution context or when
     /// polling after an I/O error.
     pub fn poll_accept(&mut self) -> Poll<(Accept, SocketAddr), io::Error> {
+        self.spawn_driver();
         self.poll_io_err()?;
 
         // Channel errors can only occur when the sender has been dropped, and
@@ -125,6 +120,12 @@ impl SutpListener {
             Ok(Async::Ready(err)) => Err(err),
             Ok(Async::NotReady) => Ok(()),
             Err(_) => panic!("driver has gone away"),
+        }
+    }
+
+    fn spawn_driver(&mut self) {
+        if let Some(d) = self.driver.take() {
+            tokio::spawn(d);
         }
     }
 }
