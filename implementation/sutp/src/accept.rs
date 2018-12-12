@@ -206,6 +206,8 @@ impl Future for Accept {
                 continue;
             }
 
+            let window_size = ack_segment.window_size;
+
             // Use a temporary channel to put the received segment back
             // into a channel. This simplifies the implementation in the
             // stream.
@@ -229,6 +231,7 @@ impl Future for Accept {
                 self.send_socket.take().expect(POLLED_TWICE),
                 self.local_seq_no + Wrapping(1),
                 self.remote_seq_no,
+                window_size,
                 self.compression_algorithm,
             );
             return Ok(Async::Ready(stream));

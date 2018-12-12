@@ -270,6 +270,7 @@ impl Future for Inner {
                         self.sock.take().expect(POLLED_TWICE),
                         self.local_seq_no,
                         Wrapping(response.seq_no),
+                        response.window_size,
                         response.select_compression_alg(),
                     );
 
