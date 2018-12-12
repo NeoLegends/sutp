@@ -19,6 +19,10 @@ use std::{
 /// size of the chunks.
 const BINARY_OVERHEAD: usize = 12;
 
+/// Whether a segment is ACKed or NAKed or whether the status is unknown.
+#[derive(Clone, Copy, Debug, Hash, Eq, PartialEq)]
+pub struct AckNak(Option<bool>);
+
 /// An SUTP segment.
 #[derive(Clone, Debug, Default, Hash, Eq, PartialEq)]
 pub struct Segment {
@@ -60,19 +64,54 @@ pub struct ValidationError {
     issues: Vec<Issue>,
 }
 
+impl AckNak {
+    /// Checks whether the AckNak is the ACK variant.
+    pub fn is_ack(&self) -> bool {
+        match *self {
+            AckNak(Some(v)) => v,
+            _ => false,
+        }
+    }
+
+    /// Whether the ACK / NAK state is known.
+    pub fn is_known(&self) -> bool {
+        match *self {
+            AckNak(Some(_)) => true,
+            _ => false,
+        }
+    }
+
+    /// Checks whether the AckNak is the NAK variant.
+    pub fn is_nak(&self) -> bool {
+        match *self {
+            AckNak(Some(v)) => !v,
+            _ => false,
+        }
+    }
+}
+
 impl Segment {
-    /// Checks whether this segment ACKs the given one.
-    pub fn acks(&self, other_seq_no: u32) -> bool {
+    /// Checks whether this segment ACKs or NAKs the given one.
+    pub fn ack(&self, other_seq_no: u32) -> AckNak {
         self.chunks.iter()
             .filter_map(|ch| match ch {
                 Chunk::Sack(ack, nak_list) => Some((ack, nak_list)),
                 _ => None,
             })
-            .any(|(&ack, nak_list)| {
+            .filter_map(|(&ack, nak_list)| {
                 let is_nakd = nak_list.iter()
                     .any(|&nak| other_seq_no == nak);
-                !is_nakd && ack >= other_seq_no
+
+                if is_nakd {
+                    Some(AckNak(Some(false)))
+                } else if ack >= other_seq_no {
+                    Some(AckNak(Some(true)))
+                } else {
+                    None
+                }
             })
+            .next()
+            .unwrap_or(AckNak(None))
     }
 
     /// Gets the length of the segment in bytes if it were serialized in
@@ -104,7 +143,7 @@ impl Segment {
         let contains_syn = self.chunks.iter()
             .any(|ch| ch.is_syn());
 
-        contains_syn && self.acks(syn1_seq_no)
+        contains_syn && self.ack(syn1_seq_no).is_ack()
     }
 
     /// Selects the most-preferred supported compression algorithm,

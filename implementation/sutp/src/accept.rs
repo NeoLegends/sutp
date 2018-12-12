@@ -201,7 +201,7 @@ impl Future for Accept {
             };
 
             // Retry if the other side didn't receive the segment properly
-            if !ack_segment.acks(self.local_seq_no.0) {
+            if !ack_segment.ack(self.local_seq_no.0).is_ack() {
                 self.ack_timeout = None;
                 continue;
             }
