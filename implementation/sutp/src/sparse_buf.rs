@@ -126,7 +126,7 @@ impl<T, F: Fn(&T) -> usize> SparseBuffer<T, F> {
     }
 
     /// Gets the key of the highest element in the consecutive row from the
-    /// current head.
+    /// current head without removing any of the elements.
     pub fn highest_consecutive_key(&self) -> Option<usize> {
         let mut last_some_slot = None;
         self.buf.iter()
