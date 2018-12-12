@@ -64,10 +64,9 @@ impl Segment {
     /// Checks whether this segment ACKs the given one.
     pub fn acks(&self, other_seq_no: u32) -> bool {
         self.chunks.iter()
-            .filter(|ch| ch.is_sack())
-            .map(|ch| match ch {
-                Chunk::Sack(ack, nak_list) => (ack, nak_list),
-                _ => unreachable!(),
+            .filter_map(|ch| match ch {
+                Chunk::Sack(ack, nak_list) => Some((ack, nak_list)),
+                _ => None,
             })
             .any(|(&ack, nak_list)| {
                 let is_nakd = nak_list.iter()
