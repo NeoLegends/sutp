@@ -15,6 +15,10 @@ use std::{
     mem,
 };
 
+/// The overhead in bytes of serializing a single segment, besides the
+/// size of the chunks.
+const BINARY_OVERHEAD: usize = 12;
+
 /// An SUTP segment.
 #[derive(Clone, Debug, Default, Hash, Eq, PartialEq)]
 pub struct Segment {
@@ -70,6 +74,16 @@ impl Segment {
                     .any(|&nak| other_seq_no == nak);
                 !is_nakd && ack >= other_seq_no
             })
+    }
+
+    /// Gets the length of the segment in bytes if it were serialized in
+    /// serialized form.
+    pub fn binary_len(&self) -> usize {
+        let chunk_len: usize = self.chunks.iter()
+            .map(|ch| ch.binary_len())
+            .sum();
+
+        chunk_len + BINARY_OVERHEAD // 64 bit header + 32 bit CRC
     }
 
     /// Checks whether the segment can be classified as a "SYN->" or "SYN 1"
@@ -385,6 +399,23 @@ impl StdError for ValidationError {}
 mod tests {
     use std::io::ErrorKind;
     use super::*;
+
+    #[test]
+    fn binary_len() {
+        let sq_empty = SegmentBuilder::new()
+            .seq_no(20)
+            .window_size(10)
+            .build();
+        assert_eq!(sq_empty.binary_len(), BINARY_OVERHEAD);
+
+        let sq_1_ch = SegmentBuilder::new()
+            .seq_no(20)
+            .window_size(10)
+            .with_chunk(Chunk::Syn)
+            .build();
+
+        assert_eq!(sq_1_ch.binary_len(), BINARY_OVERHEAD + 4);
+    }
 
     #[test]
     fn builder() {

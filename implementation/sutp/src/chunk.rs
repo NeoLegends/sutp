@@ -64,8 +64,24 @@ const U16_SIZE: usize = mem::size_of::<u16>();
 const U32_SIZE: u16 = mem::size_of::<u32>() as u16;
 const ZEROS: [u8; 3] = [0; 3];
 
+/// The constant overhead of serializing a single chunk.
+const BINARY_OVERHEAD: usize = 2 * (U16_SIZE as usize);
+
 #[allow(dead_code)]
 impl Chunk {
+    /// Calculates the length of the chunk in its binary serialized form.
+    pub fn binary_len(&self) -> usize {
+        BINARY_OVERHEAD + (match self {
+            Chunk::Abort | Chunk::Fin | Chunk::Syn => 0,
+            Chunk::CompressionNegotiation(algs) => algs.len() * (U32_SIZE as usize),
+            Chunk::Unknown(_, data) | Chunk::Payload(data) =>
+                data.len() + Self::calculate_padding(data.len()),
+            Chunk::Sack(_, list) =>
+                (U32_SIZE as usize) + list.len() * (U32_SIZE as usize),
+            Chunk::SecurityFlag(_) => U32_SIZE as usize,
+        })
+    }
+
     /// Returns whether the chunk is an ABRT chunk.
     pub fn is_abrt(&self) -> bool {
         match self {
@@ -444,6 +460,26 @@ impl From<CompressionAlgorithm> for u32 {
 mod tests {
     use std::io::Cursor;
     use super::*;
+
+    #[test]
+    fn binary_len() {
+        assert_eq!(BINARY_OVERHEAD, Chunk::Abort.binary_len());
+        assert_eq!(BINARY_OVERHEAD, Chunk::Fin.binary_len());
+        assert_eq!(BINARY_OVERHEAD, Chunk::Syn.binary_len());
+
+        assert_eq!(
+            BINARY_OVERHEAD + 4,
+            Chunk::Payload(vec![1].into()).binary_len(),
+        );
+        assert_eq!(
+            BINARY_OVERHEAD + 4,
+            Chunk::Unknown(10, vec![1].into()).binary_len(),
+        );
+        assert_eq!(
+            BINARY_OVERHEAD + 24,
+            Chunk::Sack(14, vec![1, 2, 3, 4, 5].into()).binary_len(),
+        );
+    }
 
     #[test]
     fn deserialize_compression_negotiation() {
