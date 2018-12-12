@@ -110,6 +110,13 @@ impl<T, F> SparseBuffer<T, F> {
         self.lowest_key = None;
         self.head = 0;
     }
+
+    /// Checks whether the sparse buffer is empty.
+    pub fn is_empty(&self) -> bool {
+        // If we have an element, the lowest key is set. We can "abuse" this
+        // to check whether the buffer is empty.
+        self.lowest_key.is_none()
+    }
 }
 
 impl<T, F: Fn(&T) -> usize> SparseBuffer<T, F> {
@@ -137,13 +144,6 @@ impl<T, F: Fn(&T) -> usize> SparseBuffer<T, F> {
             .next();
 
         last_some_slot.map(|slot_val| (self.key_fn)(slot_val))
-    }
-
-    /// Checks whether the sparse buffer is empty.
-    pub fn is_empty(&self) -> bool {
-        // If we have an element, the lowest key is set. We can "abuse" this
-        // to check whether the buffer is empty.
-        self.lowest_key.is_none()
     }
 
     /// Attempts to remove the "smallest" item from the sparse buffer.
