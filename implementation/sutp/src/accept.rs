@@ -195,6 +195,7 @@ impl Future for Accept {
 
             // ...and if the answer is valid
             let ack_segment = match maybe_response {
+                // TODO: Ignore faulty response?
                 Async::Ready(maybe_segment) => maybe_segment?,
                 _ => unreachable!(),
             };
