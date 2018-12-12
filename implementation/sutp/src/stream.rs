@@ -61,7 +61,7 @@ pub struct SutpStream {
     order_buf: SparseBuffer<Segment, &'static Fn(&Segment) -> usize>,
 
     /// Segments which have to be transferred and ACKed.
-    outgoing_segments: BTreeMap<u32, Outgoing>,
+    outgoing_segments: Option<BTreeMap<u32, Outgoing>>, // Option dance
 
     /// The read buffer to buffer successfully received and ordered segment
     /// data into.
@@ -178,7 +178,7 @@ impl SutpStream {
                 BUF_SIZE / OUTGOING_PAYLOAD_SIZE,
                 &order_key_selector,
             ),
-            outgoing_segments: BTreeMap::new(),
+            outgoing_segments: Some(BTreeMap::new()),
             r_buf: BytesMut::with_capacity(BUF_SIZE),
             recv,
             remote_seq_no,
@@ -271,19 +271,17 @@ impl SutpStream {
             self.nak_set.remove(&segment.seq_no);
 
             // Remove ACKed segments from out outgoing list
-            {
-                // Hacky option dance
-                let outgoing = std::mem::replace(
-                    &mut self.outgoing_segments,
-                    unsafe { std::mem::uninitialized() },
-                );
-                self.outgoing_segments = outgoing.into_iter()
-                    .filter(|(seq_no, _)| !segment.ack(*seq_no).is_ack())
-                    .collect();
-            }
+            self.outgoing_segments = self.outgoing_segments.take()
+                .map(|outgoing| {
+                    outgoing.into_iter()
+                        .filter(|(seq_no, _)| !segment.ack(*seq_no).is_ack())
+                        .collect()
+                });
 
             // Trigger immediate re-send for all outgoing NAKed segments
-            self.outgoing_segments.iter_mut()
+            self.outgoing_segments.as_mut()
+                .unwrap()
+                .iter_mut()
                 .filter(|(seq_no, _)| segment.ack(**seq_no).is_nak())
                 .for_each(|(_, outgoing)| outgoing.send_immediately());
 
@@ -333,7 +331,7 @@ impl SutpStream {
         // Gah I hate this style, but functional combinators don't allow
         // modifications to the control flow of this function and we need
         // those to handle erros and non-readyness.
-        for outgoing in self.outgoing_segments.values_mut() {
+        for outgoing in self.outgoing_segments.as_mut().unwrap().values_mut() {
             if !outgoing.should_send()? {
                 continue;
             }
@@ -395,7 +393,7 @@ impl SutpStream {
                 self.segment_buf.split_to(self.segment_buf.len()).freeze()
             };
 
-            self.outgoing_segments.insert(
+            self.outgoing_segments.as_mut().unwrap().insert(
                 seq_no,
                 Outgoing::new(serialized_segment),
             );
