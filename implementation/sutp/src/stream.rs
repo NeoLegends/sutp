@@ -13,7 +13,7 @@ use futures::{
     try_ready,
 };
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     io::{self, Error, ErrorKind, Read, Write},
     net::SocketAddr,
     num::Wrapping,
@@ -44,11 +44,18 @@ const MIN_OUTGOING_WINDOW_SIZE: usize = 128;
 /// A full-duplex SUTP stream.
 #[derive(Debug)]
 pub struct SutpStream {
+    /// The set of sequence numbers to ACK.
+    ack_set: SparseBuffer<u32, &'static Fn(&u32) -> usize>,
+
     /// The negotiated compression algorithm.
     compression_algorithm: Option<CompressionAlgorithm>,
 
     /// The current local sequence number.
     local_seq_no: Wrapping<u32>,
+
+    /// The list of sequence numbers of segments that could not be
+    /// received properly.
+    nak_set: BTreeSet<u32>,
 
     /// The sparse buffer for bringing segments into their proper order.
     order_buf: SparseBuffer<Segment, &'static Fn(&Segment) -> usize>,
@@ -145,18 +152,32 @@ impl SutpStream {
         compression_alg: Option<CompressionAlgorithm>,
     ) -> Self {
         /// The function used as key selector of the sparse buffer storing the
+        /// ACKed sequence numbers.
+        ///
+        /// This needs to be a real function instead of a lambda to be 'static
+        /// (we pass a &'static of this function to the sparse buffer below).
+        fn ack_set_key_selector(seq_no: &u32) -> usize {
+            *seq_no as usize
+        }
+
+        /// The function used as key selector of the sparse buffer storing the
         /// segments that have arrived.
         ///
         /// This needs to be a real function instead of a lambda to be 'static
         /// (we pass a &'static of this function to the sparse buffer below).
-        fn key_selector(s: &Segment) -> usize {
+        fn order_key_selector(s: &Segment) -> usize {
             s.seq_no as usize
         }
 
         Self {
+            ack_set: SparseBuffer::new(1024, &ack_set_key_selector),
             compression_algorithm: compression_alg,
             local_seq_no,
-            order_buf: SparseBuffer::new(BUF_SIZE / 1024, &key_selector),
+            nak_set: BTreeSet::new(),
+            order_buf: SparseBuffer::new(
+                BUF_SIZE / OUTGOING_PAYLOAD_SIZE,
+                &order_key_selector,
+            ),
             outgoing_segments: BTreeMap::new(),
             r_buf: BytesMut::with_capacity(BUF_SIZE),
             recv,
@@ -192,7 +213,7 @@ impl SutpStream {
             _ => return Err(ErrorKind::NotConnected.into()),
         }
 
-        try_ready!(self.poll_recv());
+        self.poll_recv()?;
 
         let copy_count = buf.len().min(self.r_buf.len());
         self.r_buf.split_to(copy_count)
@@ -204,22 +225,81 @@ impl SutpStream {
     }
 
     /// Asynchronously receives and processes newly arriving segments.
-    fn poll_recv(&mut self) -> Poll<(), io::Error> {
+    fn poll_recv(&mut self) -> Result<(), io::Error> {
         loop {
+            // Check for new segments on the channel
             let poll_res = self.recv.poll()
                 .map_err(|_| io::Error::new(
                     ErrorKind::Other,
                     "driver has gone away",
-                ));
-
-            let segment = match try_ready!(poll_res).expect("missing segment") {
-                Ok(segment) => segment,
-                Err(_) => continue,
+                ))?
+                .map(|maybe| maybe.expect("missing segment"));
+            let segment = match poll_res {
+                Async::Ready(Ok(segment)) => segment,
+                Async::Ready(Err(_)) => continue,
+                Async::NotReady => break,
             };
 
-            self.order_buf.push(segment);
-            unimplemented!()
+            // Store the sequence number in our ACK list. If that's full,
+            // insert it into our NAK set (this is unbounded at the moment).
+            match self.ack_set.push(segment.seq_no) {
+                Ok(_) => {},
+                Err(InsertError::DistanceTooLarge(_)) => {
+                    self.nak_set.insert(segment.seq_no);
+                },
+                Err(InsertError::KeyTooLow(_)) => continue,
+                Err(InsertError::WouldOverwrite(_)) => {
+                    self.nak_set.insert(segment.seq_no);
+                },
+            }
+
+            // Store the segment itself for later removal. If the buffer is full,
+            // at it to the NAK set.
+            match self.order_buf.push(segment) {
+                Ok(_) => {},
+                Err(InsertError::DistanceTooLarge(s)) => {
+                    self.nak_set.insert(s.seq_no);
+                },
+                Err(InsertError::KeyTooLow(_)) => continue,
+                Err(InsertError::WouldOverwrite(s)) => {
+                    self.nak_set.insert(s.seq_no);
+                },
+            }
         }
+
+        for segment in self.order_buf.drain() {
+            self.nak_set.remove(&segment.seq_no);
+
+            // Remove ACKed segments from out outgoing list
+            {
+                // Hacky option dance
+                let outgoing = std::mem::replace(
+                    &mut self.outgoing_segments,
+                    unsafe { std::mem::uninitialized() },
+                );
+                self.outgoing_segments = outgoing.into_iter()
+                    .filter(|(seq_no, _)| !segment.ack(*seq_no).is_ack())
+                    .collect();
+            }
+
+            // Trigger immediate re-send for all outgoing NAKed segments
+            self.outgoing_segments.iter_mut()
+                .filter(|(seq_no, _)| segment.ack(**seq_no).is_nak())
+                .for_each(|(_, outgoing)| outgoing.send_immediately());
+
+            // TODO: This loses data if r_buf has too little space!
+            let payloads = segment.chunks.into_iter()
+                .filter_map(|ch| match ch {
+                    Chunk::Payload(data) => Some(data),
+                    _ => None,
+                });
+            for payload in payloads {
+                let copy_count = self.r_buf.remaining_mut().min(payload.len());
+                self.r_buf.put_slice(&payload[..copy_count]);
+            }
+        }
+
+        Ok(())
     }
 
     /// Asynchronously tries to write data to the stream.
@@ -242,6 +322,8 @@ impl SutpStream {
     }
 
     /// Asynchronously tries to flush the stream, sending the data over the wire.
+    ///
+    /// This function does not wait for the sent segments to be acked.
     fn poll_flush(&mut self) -> Poll<(), io::Error> {
         self.assert_can_write()?;
 
@@ -252,26 +334,21 @@ impl SutpStream {
         // modifications to the control flow of this function and we need
         // those to handle erros and non-readyness.
         for outgoing in self.outgoing_segments.values_mut() {
-            if outgoing.should_send()?.is_not_ready() {
+            if !outgoing.should_send()? {
                 continue;
             }
             if (self.remote_window_size as usize) < outgoing.data.len() {
                 break;
             }
-            if self.send_socket.poll_send(&outgoing.data)?.is_not_ready() {
-                break;
-            }
+
+            try_ready!(self.send_socket.poll_send(&outgoing.data));
 
             outgoing.start_timers();
             self.remote_window_size.saturating_sub(outgoing.data.len() as u32);
         }
 
         self.poll_recv()?;
-
-        Ok(match self.outgoing_segments.len() {
-            0 => Async::Ready(()),
-            _ => Async::NotReady,
-        })
+        Ok(Async::Ready(()))
     }
 
     /// Creates segments of optimal size out of the buffer that contains
@@ -330,6 +407,8 @@ impl SutpStream {
     }
 }
 
+unsafe impl Send for SutpStream {}
+
 impl Read for SutpStream {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         try_would_block!(self.poll_read(buf))
@@ -368,10 +447,10 @@ impl Outgoing {
 
     /// Checks whether the segment should to be sent over the wire.
     ///
-    /// Returns Ok(Async::Ready(())) if the segment should to be sent,
-    /// Ok(Async::NotReady) otherwise. Returns Err(_) when either the timer
-    /// system fails, or if the failure timeout has elapsed.
-    pub fn should_send(&mut self) -> Poll<(), Error> {
+    /// Returns Ok(true) if the segment should to be sent, Ok(false) otherwise.
+    /// Returns Err(_) when either the timer system fails, or if the failure
+    /// timeout has elapsed.
+    pub fn should_send(&mut self) -> Result<bool, Error> {
         if let Some(fut) = self.fail_timeout.as_mut() {
             match fut.poll() {
                 Ok(Async::Ready(_)) => return Err(ErrorKind::TimedOut.into()),
@@ -379,15 +458,20 @@ impl Outgoing {
                 Err(e) => return Err(Error::new(ErrorKind::Other, e)),
             }
         }
-        if let Some(fut) = self.fail_timeout.as_mut() {
+        if let Some(fut) = self.resend_timeout.as_mut() {
             return match fut.poll() {
-                Ok(Async::Ready(_)) => Ok(Async::Ready(())),
-                Ok(Async::NotReady) => Ok(Async::NotReady),
+                Ok(Async::Ready(_)) => Ok(true),
+                Ok(Async::NotReady) => Ok(false),
                 Err(e) => Err(Error::new(ErrorKind::Other, e)),
             };
         }
 
-        return Ok(Async::Ready(()));
+        return Ok(true);
+    }
+
+    /// Sets the segment to be immediately sent again.
+    pub fn send_immediately(&mut self) {
+        self.resend_timeout = None;
     }
 
     /// (Re)starts the timers guarding the segment transmission.
