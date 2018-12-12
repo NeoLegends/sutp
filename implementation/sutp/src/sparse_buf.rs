@@ -146,6 +146,12 @@ impl<T, F: Fn(&T) -> usize> SparseBuffer<T, F> {
         last_some_slot.map(|slot_val| (self.key_fn)(slot_val))
     }
 
+    /// Returns a reference to the smallest element in the sparse buffer without
+    /// removing it from the buffer.
+    pub fn peek(&self) -> Option<&T> {
+        self.buf.get(self.head).unwrap().as_ref()
+    }
+
     /// Attempts to remove the "smallest" item from the sparse buffer.
     ///
     /// Returns `None` if the buffer is empty or if there is a hole at the current
