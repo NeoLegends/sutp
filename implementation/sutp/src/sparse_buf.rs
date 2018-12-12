@@ -118,6 +118,27 @@ impl<T, F: Fn(&T) -> usize> SparseBuffer<T, F> {
         Drain { buf: self }
     }
 
+    /// Gets the key of the highest element in the consecutive row from the
+    /// current head.
+    pub fn highest_consecutive_key(&self) -> Option<usize> {
+        let mut last_some_slot = None;
+        self.buf.iter()
+            .cycle() // Ensure we wrap around at the end
+            .skip(self.head) // Skip to the head
+            .take(self.capacity()) // Ensure we're bounded
+            .skip_while(|slot| {
+                if let Some(slot_val) = slot {
+                    last_some_slot = Some(slot_val);
+                    true
+                } else {
+                    false
+                }
+            })
+            .next();
+
+        last_some_slot.map(|slot_val| (self.key_fn)(slot_val))
+    }
+
     /// Checks whether the sparse buffer is empty.
     pub fn is_empty(&self) -> bool {
         // If we have an element, the lowest key is set. We can "abuse" this
@@ -391,6 +412,18 @@ mod tests {
             assert_eq!(buf.pop(), None);
             assert_eq!(buf.pop(), None);
         }
+    }
+
+    #[test]
+    fn highest_consecutive_key() {
+        let mut buf = SparseBuffer::new(3, |v: &usize| *v);
+
+        buf.push(3).unwrap();
+        assert_eq!(buf.highest_consecutive_key(), Some(3));
+        buf.push(5).unwrap();
+        assert_eq!(buf.highest_consecutive_key(), Some(3));
+        buf.push(4).unwrap();
+        assert_eq!(buf.highest_consecutive_key(), Some(5));
     }
 
     #[test]
