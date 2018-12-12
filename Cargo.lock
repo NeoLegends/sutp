@@ -447,6 +447,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "sutp-demo-client"
+version = "0.1.0"
+dependencies = [
+ "futures 0.1.25 (registry+https://github.com/rust-lang/crates.io-index)",
+ "sutp 0.1.0",
+ "tokio 0.1.13 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
+name = "sutp-demo-server"
+version = "0.1.0"
+dependencies = [
+ "futures 0.1.25 (registry+https://github.com/rust-lang/crates.io-index)",
+ "sutp 0.1.0",
+ "tokio 0.1.13 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
 name = "sutp-futures"
 version = "0.1.0"
 dependencies = [
