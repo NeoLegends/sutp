@@ -197,6 +197,8 @@ impl<T, F: Fn(&T) -> usize> SparseBuffer<T, F> {
     pub fn push(&mut self, val: T) -> Result<(), InsertError<T>> {
         let key = (self.key_fn)(&val);
 
+        // TODO: What if `key` wraps around after reaching the max value?
+
         let insert_pos = if !self.is_empty() {
             // It is guaranteed that either the sparse buffer is empty or that
             // the currently lowest key is stored within the buffer.
