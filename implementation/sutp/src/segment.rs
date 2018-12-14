@@ -19,6 +19,9 @@ use std::{
 /// size of the chunks.
 const BINARY_OVERHEAD: usize = 12;
 
+/// The size of a 32 bit int.
+const U32_SIZE: usize = mem::size_of::<u32>();
+
 /// Whether a segment is ACKed or NAKed or whether the status is unknown.
 #[derive(Clone, Copy, Debug, Hash, Eq, PartialEq)]
 pub struct AckNak(Option<bool>);
@@ -227,10 +230,13 @@ impl Segment {
     /// Reads a segment from the given buffer.
     pub fn read_from(r: &mut Bytes) -> io::Result<Segment> {
         let mut buf = r.as_ref().into_buf();
-        assert_size!(buf, mem::size_of::<u32>() * 2);
+        assert_size!(buf, U32_SIZE * 2);
 
         let seq_no = buf.get_u32_be();
         let window_size = buf.get_u32_be();
+
+        // Advancing buf doesn't advance r
+        r.advance(U32_SIZE * 2);
 
         let mut chunk_list = Vec::new();
         while let Some(ch) = Chunk::read_from(r)? {
@@ -246,8 +252,6 @@ impl Segment {
 
     /// Reads a segment from the given buffer and verifies the CRC-32 signature.
     pub fn read_from_with_crc32(r: &mut Bytes) -> io::Result<Segment> {
-        const U32_SIZE: usize = mem::size_of::<u32>();
-
         if r.len() < U32_SIZE {
             return Err(io::ErrorKind::UnexpectedEof.into());
         }
@@ -274,7 +278,12 @@ impl Segment {
             ));
         }
 
-        let segment = Self::read_from(r)?;
+        // Slice off the CRC sum at the end to avoid confusing the chunk parser,
+        // because it reads until the given buffer eaches EOF.
+        let mut subset_buf = r.slice_to(r.len() - U32_SIZE);
+        let segment = Self::read_from(&mut subset_buf)?;
+
+        r.advance(U32_SIZE);
         Ok(segment)
     }
 
@@ -512,6 +521,23 @@ mod tests {
             .build();
 
         assert!(segment.select_compression_alg().is_none());
+    }
+
+    #[test]
+    fn serde() {
+        let segment = SegmentBuilder::new()
+            .seq_no(1234)
+            .window_size(5678)
+            .with_chunk(Chunk::Syn)
+            .with_chunk(Chunk::Sack(10, vec![11, 12]))
+            .with_chunk(Chunk::Payload(b"Hello, World!".as_ref().into()))
+            .build();
+        let mut buf = segment.to_vec().into();
+
+        assert_eq!(
+            Segment::read_from_and_validate(&mut buf).unwrap(),
+            segment,
+        );
     }
 
     /// Ensure we cannot read data from nothing.

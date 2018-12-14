@@ -3,7 +3,6 @@
 
 use byteorder::{NetworkEndian, WriteBytesExt};
 use bytes::{Buf, Bytes, IntoBuf};
-use log::debug;
 use std::{
     io::{self, Result, Write},
     mem,
@@ -61,11 +60,11 @@ pub enum CompressionAlgorithm {
 }
 
 const U16_SIZE: usize = mem::size_of::<u16>();
-const U32_SIZE: u16 = mem::size_of::<u32>() as u16;
+const U32_SIZE: usize = mem::size_of::<u32>();
 const ZEROS: [u8; 3] = [0; 3];
 
 /// The constant overhead of serializing a single chunk.
-const BINARY_OVERHEAD: usize = 2 * (U16_SIZE as usize);
+const BINARY_OVERHEAD: usize = 2 * U16_SIZE;
 
 #[allow(dead_code)]
 impl Chunk {
@@ -73,12 +72,11 @@ impl Chunk {
     pub fn binary_len(&self) -> usize {
         BINARY_OVERHEAD + (match self {
             Chunk::Abort | Chunk::Fin | Chunk::Syn => 0,
-            Chunk::CompressionNegotiation(algs) => algs.len() * (U32_SIZE as usize),
+            Chunk::CompressionNegotiation(algs) => algs.len() * U32_SIZE,
             Chunk::Unknown(_, data) | Chunk::Payload(data) =>
                 data.len() + Self::calculate_padding(data.len()),
-            Chunk::Sack(_, list) =>
-                (U32_SIZE as usize) + list.len() * (U32_SIZE as usize),
-            Chunk::SecurityFlag(_) => U32_SIZE as usize,
+            Chunk::Sack(_, list) => U32_SIZE + list.len() * U32_SIZE,
+            Chunk::SecurityFlag(_) => U32_SIZE,
         })
     }
 
@@ -165,10 +163,10 @@ impl Chunk {
         let ty = buf.get_u16_be();
 
         // Advancing the buf doesn't advance the Bytes
-        r.advance(U16_SIZE as usize);
+        r.advance(U16_SIZE);
 
         // Type list as specified at https://laboratory.comsys.rwth-aachen.de/sutp/data-format
-        let (variant, bytes_read) = match ty {
+        let (variant, payload_length) = match ty {
             0x0 => Self::read_payload(r),
             0x1 => Self::read_syn(r),
             0x2 => Self::read_fin(r),
@@ -180,13 +178,12 @@ impl Chunk {
         }?;
 
         // Discard padding between chunks
-        let padding = Self::calculate_padding(bytes_read as usize);
+        let padding = Self::calculate_padding(payload_length);
         if r.len() < padding {
             return Err(io::ErrorKind::UnexpectedEof.into());
         }
 
-        r.advance(padding);
-
+        r.advance(U16_SIZE + payload_length + padding);
         Ok(Some(variant))
     }
 
@@ -225,14 +222,14 @@ impl Chunk {
 // Read implementations
 impl Chunk {
     /// Reads an ABRT chunk.
-    fn read_abrt(r: &mut Bytes) -> Result<(Self, u16)> {
+    fn read_abrt(r: &mut Bytes) -> Result<(Self, usize)> {
         Self::read_flag_chunk(Chunk::Abort, r)
     }
 
     /// Reads an SUTP compression negotiation chunk.
-    fn read_compression_negotiation(r: &mut Bytes) -> Result<(Self, u16)> {
+    fn read_compression_negotiation(r: &mut Bytes) -> Result<(Self, usize)> {
         let mut buf = r.as_ref().into_buf();
-        let len = buf.get_u16_be();
+        let len = buf.get_u16_be() as usize;
 
         // Ensure the list length is valid (i. e. a multiple of size_of::<u32>())
         debug_log_eq!(len % U32_SIZE, 0);
@@ -246,7 +243,7 @@ impl Chunk {
     }
 
     /// Reads a FIN chunk.
-    fn read_fin(r: &mut Bytes) -> Result<(Self, u16)> {
+    fn read_fin(r: &mut Bytes) -> Result<(Self, usize)> {
         Self::read_flag_chunk(Chunk::Fin, r)
     }
 
@@ -254,7 +251,7 @@ impl Chunk {
     ///
     /// The implementation is based on read_unknown and just
     /// changes the type of the chunk that was read.
-    fn read_payload(r: &mut Bytes) -> Result<(Self, u16)> {
+    fn read_payload(r: &mut Bytes) -> Result<(Self, usize)> {
         Self::read_unknown(0, r)
             .map(|(ch, len)| match ch {
                 Chunk::Unknown(_, data) => (Chunk::Payload(data), len),
@@ -263,9 +260,9 @@ impl Chunk {
     }
 
     /// Reads a SACK chunk.
-    fn read_sack(r: &mut Bytes) -> Result<(Self, u16)> {
+    fn read_sack(r: &mut Bytes) -> Result<(Self, usize)> {
         let mut buf = r.as_ref().into_buf();
-        let len = buf.get_u16_be();
+        let len = buf.get_u16_be() as usize;
 
         debug_log_assert!(len >= U32_SIZE);
         debug_log_eq!(len % U32_SIZE, 0);
@@ -280,9 +277,9 @@ impl Chunk {
     }
 
     /// Reads a security flag chunk.
-    fn read_security_flag(r: &mut Bytes) -> Result<(Self, u16)> {
+    fn read_security_flag(r: &mut Bytes) -> Result<(Self, usize)> {
         let mut buf = r.as_ref().into_buf();
-        let len = buf.get_u16_be();
+        let len = buf.get_u16_be() as usize;
 
         debug_log_eq!(len, 1);
         assert_size!(buf, 1);
@@ -292,35 +289,30 @@ impl Chunk {
     }
 
     /// Reads a SYN chunk.
-    fn read_syn(r: &mut Bytes) -> Result<(Self, u16)> {
+    fn read_syn(r: &mut Bytes) -> Result<(Self, usize)> {
         Self::read_flag_chunk(Chunk::Syn, r)
     }
 
     /// Reads the data of an unknown chunk into a buffer.
-    fn read_unknown(ty: u16, r: &mut Bytes) -> Result<(Self, u16)> {
+    fn read_unknown(ty: u16, r: &mut Bytes) -> Result<(Self, usize)> {
         let mut buf = r.as_ref().into_buf();
         let len = buf.get_u16_be() as usize;
 
-        r.advance(U16_SIZE as usize);
-        if r.len() < len {
-            return Err(io::ErrorKind::UnexpectedEof.into());
-        }
+        assert_size!(buf, len);
+        let payload = r.slice(U16_SIZE, U16_SIZE + len);
 
-        Ok((Chunk::Unknown(ty, r.split_to(len)), len as u16))
+        Ok((Chunk::Unknown(ty, payload), len))
     }
 
     /// Reads a flag (zero-sized) chunk from the reader.
-    fn read_flag_chunk(ch: Chunk, r: &mut Bytes) -> Result<(Self, u16)> {
+    fn read_flag_chunk(ch: Chunk, r: &mut Bytes) -> Result<(Self, usize)> {
         let mut buf = r.as_ref().into_buf();
-        let len = buf.get_u16_be();
+        let len = buf.get_u16_be() as usize;
 
         // Ensure we are given correct data, but otherwise discard what we've been
         // given for a robust implementation.
         debug_log_eq!(len, 0);
         assert_size!(buf, len as usize);
-
-        // Reading from the buffer doesn't advance the Bytes
-        r.advance(U16_SIZE + len as usize);
 
         Ok((ch, len))
     }
@@ -329,7 +321,7 @@ impl Chunk {
 // Write implementations
 impl Chunk {
     /// Writes an ABRT chunk to the given writer.
-    fn write_abrt(w: &mut impl Write) -> Result<u16> {
+    fn write_abrt(w: &mut impl Write) -> Result<usize> {
         Self::write_chunk_header(0x3, 0, w)?;
         Ok(0)
     }
@@ -338,33 +330,33 @@ impl Chunk {
     fn write_compression_negotiation(
         list: &[CompressionAlgorithm],
         w: &mut impl Write,
-    ) -> Result<u16> {
-        let payload_size = list.len() * (U32_SIZE as usize);
+    ) -> Result<usize> {
+        let payload_size = list.len() * U32_SIZE;
         assert!(payload_size <= u16::MAX as usize);
 
-        Self::write_chunk_header(0xa0, payload_size as u16, w)?;
+        Self::write_chunk_header(0xa0, payload_size, w)?;
 
         for &alg in list {
             w.write_u32::<NetworkEndian>(alg.into())?;
         }
 
-        Ok(payload_size as u16)
+        Ok(payload_size)
     }
 
     /// Writes a FIN chunk to the given writer.
-    fn write_fin(w: &mut impl Write) -> Result<u16> {
+    fn write_fin(w: &mut impl Write) -> Result<usize> {
         Self::write_chunk_header(0x2, 0, w)?;
         Ok(0)
     }
 
     /// Writes a payload chunk containing the given data to the given writer.
-    fn write_payload(data: &[u8], w: &mut impl Write) -> Result<u16> {
+    fn write_payload(data: &[u8], w: &mut impl Write) -> Result<usize> {
         assert!(data.len() <= u16::MAX as usize);
 
-        Self::write_chunk_header(0x0, data.len() as u16, w)?;
+        Self::write_chunk_header(0x0, data.len(), w)?;
         w.write_all(&data)?;
 
-        Ok(data.len() as u16)
+        Ok(data.len())
     }
 
     /// Writes a SACK chunk containing the given data to the given writer.
@@ -372,12 +364,11 @@ impl Chunk {
         ack_no: u32,
         nak_list: &[u32],
         w: &mut impl Write,
-    ) -> Result<u16> {
-        let payload_len = U32_SIZE as usize +
-            nak_list.len() as usize * U32_SIZE as usize;
+    ) -> Result<usize> {
+        let payload_len = U32_SIZE + nak_list.len() * U32_SIZE;
 
         assert!(payload_len <= u16::MAX as usize);
-        Self::write_chunk_header(0x4, payload_len as u16, w)?;
+        Self::write_chunk_header(0x4, payload_len, w)?;
 
         w.write_u32::<NetworkEndian>(ack_no)?;
 
@@ -385,11 +376,11 @@ impl Chunk {
             w.write_u32::<NetworkEndian>(nak_no)?;
         }
 
-        Ok(payload_len as u16)
+        Ok(payload_len)
     }
 
     /// Writes the security flag chunk to the given writer.
-    fn write_security_flag(is_insecure: bool, w: &mut impl Write) -> Result<u16> {
+    fn write_security_flag(is_insecure: bool, w: &mut impl Write) -> Result<usize> {
         Self::write_chunk_header(0xfe, 1, w)?;
         w.write_u8(if is_insecure { 1 } else { 0 })?;
 
@@ -397,25 +388,27 @@ impl Chunk {
     }
 
     /// Writes a SYN to the given writer.
-    fn write_syn(w: &mut impl Write) -> Result<u16> {
+    fn write_syn(w: &mut impl Write) -> Result<usize> {
         Self::write_chunk_header(0x1, 0, w)?;
         Ok(0)
     }
 
     /// Writes an unknown chunk of the given type.
-    fn write_unknown(ty: u16, data: &[u8], w: &mut impl Write) -> Result<u16> {
+    fn write_unknown(ty: u16, data: &[u8], w: &mut impl Write) -> Result<usize> {
         assert!(data.len() <= u16::MAX as usize);
 
-        Self::write_chunk_header(ty, data.len() as u16, w)?;
+        Self::write_chunk_header(ty, data.len(), w)?;
         w.write_all(data)?;
 
-        Ok(data.len() as u16)
+        Ok(data.len())
     }
 
     /// Writes chunk type and payload length to the given writer.
-    fn write_chunk_header(ty: u16, len: u16, w: &mut impl Write) -> Result<()> {
+    fn write_chunk_header(ty: u16, len: usize, w: &mut impl Write) -> Result<()> {
+        assert!(len <= u16::MAX as usize);
+
         w.write_u16::<NetworkEndian>(ty)?;
-        w.write_u16::<NetworkEndian>(len)?;
+        w.write_u16::<NetworkEndian>(len as u16)?;
 
         Ok(())
     }
