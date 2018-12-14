@@ -3,6 +3,7 @@
 use bytes::BytesMut;
 use crate::{
     ResultExt,
+    LOCAL_BIND_ADDR,
     UDP_DGRAM_SIZE,
     accept::Accept,
     segment::Segment,
@@ -238,7 +239,7 @@ impl Future for Driver {
                 }
 
                 // Create sending socket and bind it to the remote address
-                let maybe_sock = UdpSocket::bind(&addr)
+                let maybe_sock = UdpSocket::bind(&LOCAL_BIND_ADDR)
                     .inspect_mut(|s| s.connect(&addr));
                 let sock = match maybe_sock {
                     Ok(sock) => sock,
