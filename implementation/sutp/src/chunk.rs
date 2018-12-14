@@ -156,7 +156,10 @@ impl Chunk {
     /// chunk list, and not an unexpected EOF. Otherwise returns `Some`.
     pub fn read_from(r: &mut Bytes) -> Result<Option<Self>> {
         let mut buf = r.as_ref().into_buf();
-        if buf.remaining() < (U32_SIZE as usize) {
+
+        // Ensure the buffer has enough space for the chunk header, otherwise
+        // we've probably just reached the end of the segment.
+        if buf.remaining() < U32_SIZE {
             return Ok(None);
         }
 
