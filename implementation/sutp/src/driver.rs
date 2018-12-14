@@ -128,9 +128,18 @@ impl Driver {
         -> Poll<(Result<Segment, io::Error>, SocketAddr), io::Error> {
         self.recv_buf.reserve(UDP_DGRAM_SIZE);
 
-        let (nread, addr) = try_ready!({
-            self.socket.poll_recv_from(&mut self.recv_buf)
-        });
+        // Unsafe because we're setting the length without any checks here. This
+        // may potentially result in reads from uninitialized memory, but the UDP
+        // socket will not attempt to read from the buffer, so it's not a big deal
+        let (nread, addr) = unsafe {
+            self.recv_buf.set_len(UDP_DGRAM_SIZE);
+            let (nread, addr) = try_ready!({
+                self.socket.poll_recv_from(self.recv_buf.as_mut())
+            });
+            self.recv_buf.set_len(nread);
+
+            (nread, addr)
+        };
 
         let mut buf = self.recv_buf.split_to(nread).freeze();
         let maybe_segment = Segment::read_from_and_validate(&mut buf);
