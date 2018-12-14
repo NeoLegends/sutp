@@ -3,6 +3,7 @@
 use crate::{
     ResultExt,
     CONNECTION_TIMEOUT,
+    LOCAL_BIND_ADDR,
     RESPONSE_SEGMENT_TIMEOUT,
     chunk::{Chunk, SUPPORTED_COMPRESSION_ALGS},
     driver::{Driver, NEW_CONN_QUEUE_SIZE},
@@ -14,11 +15,10 @@ use futures::{
     sync::{mpsc, oneshot},
     try_ready,
 };
-use lazy_static::lazy_static;
 use rand;
 use std::{
     io::{Error, ErrorKind},
-    net::{IpAddr, Ipv4Addr, SocketAddr},
+    net::SocketAddr,
     num::Wrapping,
 };
 use tokio::{
@@ -28,14 +28,6 @@ use tokio::{
 };
 
 const POLLED_TWICE: &str = "cannot poll Connect twice";
-
-lazy_static! {
-    /// The address to create local sockets with.
-    ///
-    /// This, when used for binding sockets, auto-selects a random free port.
-    static ref BIND_ADDR: SocketAddr =
-        SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 0);
-}
 
 /// A future representing the connection of a new SUTP stream.
 #[derive(Debug)]
@@ -130,7 +122,7 @@ impl Inner {
 
         // Spawn a driver for this connection
         let driver = Driver::from_connection(
-            UdpSocket::bind(&BIND_ADDR)?,
+            UdpSocket::bind(&LOCAL_BIND_ADDR)?,
             err_tx,
             addr,
             sgmt_tx,
@@ -153,7 +145,7 @@ impl Inner {
                 .build()
                 .to_vec()
         };
-        let socket = UdpSocket::bind(&BIND_ADDR)
+        let socket = UdpSocket::bind(&LOCAL_BIND_ADDR)
             .inspect_mut(|s| s.connect(addr))?;
 
         Ok(Self {

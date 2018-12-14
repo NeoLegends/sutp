@@ -19,19 +19,29 @@ pub use crate::{
     stream::SutpStream,
 };
 
+use lazy_static::lazy_static;
 use std::{
+    net::{IpAddr, Ipv4Addr, SocketAddr},
     time::Duration,
     u16,
 };
 
-/// Max size of a UDP datagram.
-const UDP_DGRAM_SIZE: usize = u16::MAX as usize;
+lazy_static! {
+    /// The address to create local sockets with.
+    ///
+    /// This, when used for binding sockets, auto-selects a random free port.
+    static ref LOCAL_BIND_ADDR: SocketAddr =
+        SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 0);
+}
 
 /// The timeout for setting up a new connection.
 const CONNECTION_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// The timeout for receiving the response to a segment.
 const RESPONSE_SEGMENT_TIMEOUT: Duration = Duration::from_secs(2);
+
+/// Max size of a UDP datagram.
+const UDP_DGRAM_SIZE: usize = u16::MAX as usize;
 
 /// Some useful extensions to `Result`.
 trait ResultExt<T, E> {
