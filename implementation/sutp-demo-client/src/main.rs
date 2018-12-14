@@ -1,8 +1,11 @@
+use env_logger;
 use futures::Future;
 use sutp::SutpStream;
 use tokio::{self, io::{flush, shutdown, write_all}};
 
 fn main() {
+    env_logger::init();
+
     let addr = "127.0.0.1:12345".parse().unwrap();
     let fut = SutpStream::connect(&addr)
         .and_then(|stream| write_all(stream, &b"Hello World!"))

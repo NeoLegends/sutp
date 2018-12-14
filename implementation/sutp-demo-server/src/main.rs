@@ -1,8 +1,11 @@
+use env_logger;
 use futures::{Future, Stream};
 use sutp::SutpListener;
 use tokio::{self, io::read_to_end};
 
 fn main() {
+    env_logger::init();
+
     let addr = "0.0.0.0:12345".parse().unwrap();
     let fut = SutpListener::bind(&addr)
         .unwrap()
