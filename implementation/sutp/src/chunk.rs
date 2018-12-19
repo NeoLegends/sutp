@@ -3,7 +3,6 @@
 
 use byteorder::{NetworkEndian, WriteBytesExt};
 use bytes::{Buf, Bytes, IntoBuf};
-use log::debug;
 use std::{
     io::{self, Result, Write},
     mem,
