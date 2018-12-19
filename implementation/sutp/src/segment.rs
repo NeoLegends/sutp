@@ -211,11 +211,11 @@ impl Segment {
             .filter(|ch| ch.is_syn())
             .count();
 
-        if abrt_count > 0 || fin_count > 0 || syn_count > 0 {
+        if abrt_count > 1 || fin_count > 1 || syn_count > 1 {
             Some(Issue::DuplicatedChunks {
-                abrt: abrt_count > 0,
-                fin: fin_count > 0,
-                syn: syn_count > 0,
+                abrt: abrt_count > 1,
+                fin: fin_count > 1,
+                syn: syn_count > 1,
             })
         } else {
             None
