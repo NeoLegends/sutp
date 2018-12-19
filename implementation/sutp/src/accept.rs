@@ -200,12 +200,20 @@ impl Future for Accept {
                 _ => unreachable!(),
             };
 
+            // Check if the received segment is the clients second segment
+            // for proper remote_seq_no begin
+            if ack_segment.seq_no != self.remote_seq_no.0 + 1 {
+                self.ack_timeout = None;
+                continue;
+            }
+
             // Retry if the other side didn't receive the segment properly
             if !ack_segment.ack(self.local_seq_no.0).is_ack() {
                 self.ack_timeout = None;
                 continue;
             }
 
+            self.remote_seq_no += Wrapping(1);
             let window_size = ack_segment.window_size;
 
             // Use a temporary channel to put the received segment back
