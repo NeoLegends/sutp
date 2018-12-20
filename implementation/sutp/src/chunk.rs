@@ -240,6 +240,9 @@ impl Chunk {
         let list = (0..(len / U32_SIZE))
             .map(|_| buf.get_u32_be().into())
             .collect();
+
+        r.advance(U16_SIZE + len);
+
         Ok((Chunk::CompressionNegotiation(list), len))
     }
 
@@ -274,18 +277,23 @@ impl Chunk {
             .map(|_| buf.get_u32_be())
             .collect();
 
+        r.advance(U16_SIZE + len);    
+
         Ok((Chunk::Sack(ack_no, nak_list), len))
     }
 
     /// Reads a security flag chunk.
     fn read_security_flag(r: &mut Bytes) -> Result<(Self, usize)> {
         let mut buf = r.as_ref().into_buf();
-        let len = buf.get_u16_be();
+        let len = buf.get_u16_be() as usize;
 
         debug_log_eq!(len, 1);
         assert_size!(buf, 1);
 
         let flag_value = buf.get_u8();
+
+        r.advance(U16_SIZE + len);
+
         Ok((Chunk::SecurityFlag(flag_value != 0), 1))
     }
 
@@ -685,16 +693,17 @@ mod tests {
 
     #[test]
     fn serialize_sack_chunk() {
-        let chunk = Chunk::Sack(17, vec![20, 18]);
+        let chunk = Chunk::Sack(4, vec![5, 6, 7]);
 
         let mut buf = Vec::new();
         chunk.write_to(&mut buf).unwrap();
 
         let expected = &[
-            0x0, 0x4, 0x0, 0xc,
-            0x0, 0x0, 0x0, 0x11,
-            0x0, 0x0, 0x0, 0x14,
-            0x0, 0x0, 0x0, 0x12,
+            0x0, 0x4, 0x0, 0x10,
+            0x0, 0x0, 0x0, 0x4,
+            0x0, 0x0, 0x0, 0x5,
+            0x0, 0x0, 0x0, 0x6,
+            0x0, 0x0, 0x0, 0x7,
         ];
         assert_eq!(&buf, expected);
     }
