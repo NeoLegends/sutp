@@ -526,4 +526,37 @@ mod tests {
             _ => {},
         }
     }
+
+    #[test]
+    fn illegal_chunk_duplication_test() {
+        let segment = SegmentBuilder::new()
+            .seq_no(1)
+            .window_size(1)
+            .with_chunk(Chunk::Syn)
+            .with_chunk(Chunk::Syn)
+            .with_chunk(Chunk::Abort)
+            .with_chunk(Chunk::Abort)
+            .with_chunk(Chunk::Fin)
+            .with_chunk(Chunk::Fin)
+            .build();
+
+        assert_eq!(Some(Issue::DuplicatedChunks {
+                abrt: true,
+                fin: true,
+                syn: true,
+            }), segment.check_illegal_duplication());
+    }
+
+    #[test]
+    fn no_illegal_chunk_duplication_test() {
+        let segment = SegmentBuilder::new()
+            .seq_no(1)
+            .window_size(1)
+            .with_chunk(Chunk::Syn)
+            .with_chunk(Chunk::Abort)
+            .with_chunk(Chunk::Fin)
+            .build();
+
+        assert_eq!(None, segment.check_illegal_duplication());
+    }
 }
