@@ -390,7 +390,7 @@ impl SutpStream {
             let serialized_segment = {
                 self.segment_buf.reserve(segment.binary_len());
                 segment
-                    .write_to_with_crc32(&mut (&mut self.segment_buf).writer())
+                    .write_to(&mut (&mut self.segment_buf).writer())
                     .unwrap(); // since we're writing to memory this is infallible
 
                 self.segment_buf.split_to(self.segment_buf.len()).freeze()

@@ -208,30 +208,8 @@ impl Segment {
 }
 
 impl Segment {
-    /// Reads a segment from the given buffer.
-    pub fn read_from(r: &mut Bytes) -> io::Result<Segment> {
-        let mut buf = r.as_ref().into_buf();
-        assert_size!(buf, mem::size_of::<u32>() * 2);
-
-        let seq_no = buf.get_u32_be();
-        let window_size = buf.get_u32_be();
-
-        r.advance(mem::size_of::<u32>() * 2);
-
-        let mut chunk_list = Vec::new();
-        while let Some(ch) = Chunk::read_from(r)? {
-            chunk_list.push(ch);
-        }
-
-        Ok(Segment {
-            chunks: chunk_list,
-            seq_no,
-            window_size,
-        })
-    }
-
     /// Reads a segment from the given buffer and verifies the CRC-32 signature.
-    pub fn read_from_with_crc32(r: &mut Bytes) -> io::Result<Segment> {
+    pub fn read_from(r: &mut Bytes) -> io::Result<Segment> {
         const U32_SIZE: usize = mem::size_of::<u32>();
 
         if r.len() < U32_SIZE {
@@ -262,7 +240,7 @@ impl Segment {
         // Slice off the CRC sum at the end to avoid confusing the chunk parser,
         // because it reads until the given buffer eaches EOF.
         let mut subset_buf = r.slice_to(r.len() - U32_SIZE);
-        let segment = Self::read_from(&mut subset_buf)?;
+        let segment = Self::read_from_raw(&mut subset_buf)?;
 
         r.advance(U32_SIZE);
         Ok(segment)
@@ -276,7 +254,7 @@ impl Segment {
     /// It is strongly advised to pass a buffering `io.Read` implementation
     /// since the parser will issue lots of small calls to `read`.
     pub fn read_from_and_validate(r: &mut Bytes) -> io::Result<Segment> {
-        Self::read_from_with_crc32(r).inspect_mut(|segment| {
+        Self::read_from(r).inspect_mut(|segment| {
             segment
                 .validate()
                 .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
@@ -288,23 +266,8 @@ impl Segment {
     /// It is strongly advised to pass a buffering `io.Write` implementation
     /// since the serializer will issue lots of small calls to `write`.
     pub fn write_to(&self, w: &mut impl Write) -> io::Result<()> {
-        w.write_u32::<NetworkEndian>(self.seq_no)?;
-        w.write_u32::<NetworkEndian>(self.window_size)?;
-
-        for ch in &self.chunks {
-            ch.write_to(w)?;
-        }
-
-        Ok(())
-    }
-
-    /// Writes the segment including its CRC-32-sum to the given writer.
-    ///
-    /// It is strongly advised to pass a buffering `io.Write` implementation
-    /// since the serializer will issue lots of small calls to `write`.
-    pub fn write_to_with_crc32(&self, w: &mut impl Write) -> io::Result<()> {
         let mut crc_writer = CrcWriter::new(w);
-        self.write_to(&mut crc_writer)?;
+        self.write_to_raw(&mut crc_writer)?;
 
         let crc_sum = crc_writer.crc().sum();
         crc_writer
@@ -317,8 +280,45 @@ impl Segment {
     /// Writes the segment to a new vector of bytes.
     pub fn to_vec(&self) -> Vec<u8> {
         let mut buf = Cursor::new(Vec::new());
-        self.write_to_with_crc32(&mut buf).unwrap();
+        self.write_to(&mut buf).unwrap();
         buf.into_inner()
+    }
+
+    /// Reads a segment from the given buffer w/o verifying the CRC signature.
+    fn read_from_raw(r: &mut Bytes) -> io::Result<Segment> {
+        let mut buf = r.as_ref().into_buf();
+        assert_size!(buf, mem::size_of::<u32>() * 2);
+
+        let seq_no = buf.get_u32_be();
+        let window_size = buf.get_u32_be();
+
+        r.advance(mem::size_of::<u32>() * 2);
+
+        let mut chunk_list = Vec::new();
+        while let Some(ch) = Chunk::read_from(r)? {
+            chunk_list.push(ch);
+        }
+
+        Ok(Segment {
+            chunks: chunk_list,
+            seq_no,
+            window_size,
+        })
+    }
+
+    /// Writes the segment to the given writer without writing the CRC sum.
+    ///
+    /// It is strongly advised to pass a buffering `io.Write` implementation
+    /// since the serializer will issue lots of small calls to `write`.
+    fn write_to_raw(&self, w: &mut impl Write) -> io::Result<()> {
+        w.write_u32::<NetworkEndian>(self.seq_no)?;
+        w.write_u32::<NetworkEndian>(self.window_size)?;
+
+        for ch in &self.chunks {
+            ch.write_to(w)?;
+        }
+
+        Ok(())
     }
 }
 
@@ -482,10 +482,10 @@ mod tests {
 
         let mut buf = Vec::new();
 
-        segment.write_to_with_crc32(&mut buf).unwrap();
+        segment.write_to(&mut buf).unwrap();
         let written = buf.len();
         assert!(written > 0);
-        segment.write_to_with_crc32(&mut buf).unwrap();
+        segment.write_to(&mut buf).unwrap();
 
         assert!(buf.len() > 0);
 
@@ -494,8 +494,8 @@ mod tests {
         // Split the buffer because segment parsing reads until EOF
         let mut part_b = part_a.split_off(written);
 
-        assert_eq!(segment, Segment::read_from_with_crc32(&mut part_a).unwrap(),);
-        assert_eq!(segment, Segment::read_from_with_crc32(&mut part_b).unwrap(),);
+        assert_eq!(segment, Segment::read_from(&mut part_a).unwrap(),);
+        assert_eq!(segment, Segment::read_from(&mut part_b).unwrap(),);
     }
 
     #[test]
@@ -611,7 +611,7 @@ mod tests {
 
         assert_eq!(
             segment,
-            Segment::read_from_with_crc32(&mut serialized_segment).unwrap(),
+            Segment::read_from(&mut serialized_segment).unwrap(),
         );
     }
 
