@@ -17,7 +17,6 @@ use std::{
 use tokio::{
     clock,
     io::{AsyncRead, AsyncWrite},
-    net::udp::UdpSocket,
     timer::Delay,
 };
 
@@ -69,14 +68,17 @@ pub struct SutpStream {
     /// A receiver with incoming segments.
     recv: mpsc::Receiver<Result<Segment, io::Error>>,
 
+    /// The address of the remote endpoint.
+    remote_addr: SocketAddr,
+
     /// The last-known remaining window size.
     remote_window_size: u32,
 
-    /// The UDP socket to send segments from.
-    send_socket: UdpSocket,
-
     /// The buffer to temporarily write serialized segment contents to.
     segment_buf: BytesMut,
+
+    /// The channel used to send outgoing segments to the driver.
+    send: mpsc::Sender<(Bytes, SocketAddr)>,
 
     /// The state of the stream.
     state: StreamState,
@@ -144,8 +146,9 @@ impl SutpStream {
     /// one we expect next, but the one we currently have.
     pub(crate) fn create(
         recv: mpsc::Receiver<Result<Segment, Error>>,
-        sock: UdpSocket,
+        send: mpsc::Sender<(Bytes, SocketAddr)>,
         local_seq_no: Wrapping<u32>,
+        remote_addr: SocketAddr,
         remote_seq_no: Wrapping<u32>,
         remote_win_size: u32,
         compression_alg: Option<CompressionAlgorithm>,
@@ -172,9 +175,10 @@ impl SutpStream {
             outgoing_segments: BTreeMap::new(),
             r_buf: BytesMut::with_capacity(BUF_SIZE),
             recv,
+            remote_addr,
             remote_window_size: remote_win_size,
             segment_buf: BytesMut::with_capacity(BUF_SIZE),
-            send_socket: sock,
+            send,
             state: StreamState::Open,
             w_buf: BytesMut::with_capacity(BUF_SIZE),
         }
@@ -254,7 +258,8 @@ impl SutpStream {
                 break;
             }
 
-            try_ready!(self.send_socket.poll_send(&outgoing.data));
+            // .clone() only clones the reference, not the data
+            try_ready!(self.send_to_driver(outgoing.data.clone()));
 
             outgoing.start_timers();
             self.remote_window_size
@@ -402,6 +407,22 @@ impl SutpStream {
         // Since everything has been copied to segment_buf, this will reclaim
         // the entire buffer space without allocating.
         self.w_buf.reserve(BUF_SIZE);
+    }
+
+    /// Sends the given data over the channel to the driver.
+    fn send_to_driver(&mut self, data: Bytes) -> Poll<(), Error> {
+        let poll_res = self
+            .send
+            .start_send((data, self.remote_addr))
+            .map_err(|_| Error::new(ErrorKind::Other, "driver has gone away"));
+
+        match poll_res? {
+            AsyncSink::Ready => Ok(Async::Ready(())),
+            AsyncSink::NotReady(_) => self
+                .send
+                .poll_complete()
+                .map_err(|_| Error::new(ErrorKind::Other, "driver has gone away")),
+        }
     }
 }
 

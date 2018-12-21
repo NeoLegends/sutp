@@ -1,7 +1,7 @@
 //! Implements the background processor.
 
 use crate::{accept::Accept, segment::Segment, ResultExt, UDP_DGRAM_SIZE};
-use bytes::BytesMut;
+use bytes::{Bytes, BytesMut};
 use futures::{
     prelude::*,
     sink::Send,
@@ -62,8 +62,34 @@ pub struct Driver {
     /// A receive buffer for UDP data.
     recv_buf: BytesMut,
 
+    /// The channel to receive segments to send over.
+    segment_rx: mpsc::Receiver<(Bytes, SocketAddr)>,
+
+    /// The sending side of the `segment_rx`, kept here for cloning it for new
+    /// connections.
+    ///
+    /// If this is `None`, new connections cannot be accepted anymore.
+    segment_tx: Option<mpsc::Sender<(Bytes, SocketAddr)>>,
+
     /// The actual UDP socket.
     socket: UdpSocket,
+}
+
+/// DRY-macro for hard I/O errors within the driver.
+///
+/// Attempts to send the error via the contained io_err channel
+/// to the listener and shuts down the driver.
+macro_rules! hard_io_err {
+    ($this:ident, $err:expr) => {{
+        let _ = $this
+            .io_err
+            .take()
+            .expect("polling after I/O error")
+            .send($err);
+
+        // Shutdown the driver by completing the future
+        return Err(());
+    }};
 }
 
 impl Driver {
@@ -73,12 +99,16 @@ impl Driver {
         io_err: oneshot::Sender<io::Error>,
         new_conn: mpsc::Sender<(Accept, SocketAddr)>,
     ) -> Self {
+        let (sgmt_tx, sgmt_rx) = mpsc::channel(NEW_CONN_QUEUE_SIZE);
+
         Self {
             conn_map: HashMap::new(),
             io_err: Some(io_err),
             new_conn: Some(new_conn),
             new_conn_fut: None,
             recv_buf: BytesMut::with_capacity(UDP_DGRAM_SIZE),
+            segment_rx: sgmt_rx,
+            segment_tx: Some(sgmt_tx),
             socket,
         }
     }
@@ -90,11 +120,12 @@ impl Driver {
         socket: UdpSocket,
         io_err: oneshot::Sender<io::Error>,
         addr: &SocketAddr,
-        conn_tx: mpsc::Sender<Result<Segment, io::Error>>,
+        connection_tx: mpsc::Sender<Result<Segment, io::Error>>,
+        segment_rx: mpsc::Receiver<(Bytes, SocketAddr)>,
     ) -> Self {
         let conn_map = {
             let mut map = HashMap::with_capacity(1);
-            map.insert(*addr, conn_tx);
+            map.insert(*addr, connection_tx);
             map
         };
 
@@ -104,14 +135,143 @@ impl Driver {
             new_conn: None,
             new_conn_fut: None,
             recv_buf: BytesMut::with_capacity(UDP_DGRAM_SIZE),
+            segment_rx,
+            segment_tx: None,
             socket,
+        }
+    }
+
+    /// Processes newly arriving segments on the UDP socket.
+    fn poll_recv(&mut self) -> Poll<(), ()> {
+        // Ensure new connections are getting picked up
+        //
+        // TODO: Refactor this somehow. This is super less-than-ideal,
+        // because receiving a lot of new connections can block the processing
+        // of already-opened ones. Ideally we'd separate these concerns and let
+        // the backpressure of new connections not apply to the handling of
+        // existing connections.
+        if let Some(ref mut fut) = self.new_conn_fut.as_mut() {
+            match fut.poll() {
+                Ok(Async::Ready(sender)) => self.new_conn = Some(sender),
+                Ok(Async::NotReady) => return Ok(Async::NotReady),
+                // Listener has been dropped, but some streams may still be alive
+                Err(_) => {}
+            }
+        }
+        self.new_conn_fut = None;
+
+        // Read a segment from the socket
+        let (maybe_segment, addr) = match self.recv_udp_segment() {
+            Ok(Async::Ready(data)) => data,
+            Ok(Async::NotReady) => return Ok(Async::NotReady),
+            Err(e) => hard_io_err!(self, e),
+        };
+
+        if let Some(conn) = self.conn_map.get_mut(&addr) {
+            // We have a connection which we need to forward the segment
+            // parsing result to.
+
+            // TODO: We'd actually would like to apply backpressure here, but
+            // not sure how without affecting all other connections as well.
+            match conn.try_send(maybe_segment) {
+                Ok(_) => {}
+                Err(ref e) if e.is_disconnected() => {
+                    self.conn_map.remove(&addr);
+                }
+                Err(ref e) if e.is_full() => {
+                    warn!("discarding segment due to overpressure");
+                }
+                Err(e) => unreachable!("unknown channel failure: {:?}", e),
+            }
+        } else if let Some(new_conn) = self.new_conn.take() {
+            // We need to check whether the given segment is a SYN-> segment
+            // and actually initialize the new connection.
+
+            if maybe_segment.is_err() {
+                trace!("discarding segment because its invalid");
+                self.new_conn = Some(new_conn);
+
+                return Ok(Async::Ready(()));
+            }
+
+            // Safe due to check above
+            let segment = maybe_segment.unwrap();
+
+            if !segment.is_syn1() {
+                trace!("discarding init segment because it's not SYN->");
+                self.new_conn = Some(new_conn);
+
+                return Ok(Async::Ready(()));
+            }
+
+            // Create sending socket and bind it to the remote address
+            let maybe_sock =
+                UdpSocket::bind(&addr).inspect_mut(|s| s.connect(&addr));
+            let sock = match maybe_sock {
+                Ok(sock) => sock,
+                Err(e) => hard_io_err!(self, e),
+            };
+
+            let (mut tx, rx) = mpsc::channel(STREAM_SEGMENT_QUEUE_SIZE);
+
+            // Queue initial segment for processing in the SutpStream
+            tx.try_send(Ok(segment))
+                .expect("failed to queue initial segment");
+
+            self.conn_map.insert(addr, tx);
+
+            let segment_tx = self
+                .segment_tx
+                .as_ref()
+                .cloned()
+                .expect("missing segment tx");
+            let stream = Accept::from_listener(addr, rx, segment_tx);
+            self.new_conn_fut = Some(new_conn.send((stream, addr)));
+        } else {
+            // The segment is invalid and we don't know where it's coming from,
+            // or the listener has been dropped and we cannot accept new
+            // connections.
+
+            trace!("received invalid segment from unknown address");
+        }
+
+        Ok(Async::Ready(()))
+    }
+
+    /// Sends a single segment, if possible, over the wire.
+    fn poll_send(&mut self) -> Poll<(), ()> {
+        match self.socket.poll_write_ready() {
+            Ok(Async::Ready(_)) => {}
+            Ok(Async::NotReady) => return Ok(Async::NotReady),
+            Err(e) => hard_io_err!(self, e),
+        }
+
+        let (data, addr) = try_ready!(self.recv_chan_segment());
+
+        match self.socket.poll_send_to(&data, &addr) {
+            Ok(Async::Ready(_)) => Ok(Async::Ready(())),
+            Ok(Async::NotReady) => {
+                unreachable!("udp socket not ready after polling for readyness")
+            }
+            Err(e) => hard_io_err!(self, e),
+        }
+    }
+
+    /// Receives a segment from the data channel.
+    fn recv_chan_segment(&mut self) -> Poll<(Bytes, SocketAddr), ()> {
+        match self.segment_rx.poll() {
+            Ok(Async::Ready(Some(item))) => Ok(Async::Ready(item)),
+            Ok(Async::Ready(None)) | Ok(Async::NotReady) => Ok(Async::NotReady),
+
+            // Receiver::poll() never errors
+            Err(_) => unreachable!(),
         }
     }
 
     /// Asynchronously reads a segment off the UDP socket.
     ///
     /// The segment is also validated.
-    fn recv_segment(
+    fn recv_udp_segment(
         &mut self,
     ) -> Poll<(Result<Segment, io::Error>, SocketAddr), io::Error> {
         self.recv_buf.reserve(UDP_DGRAM_SIZE);
@@ -141,23 +301,6 @@ impl Driver {
     }
 }
 
-/// DRY-macro for hard I/O errors within the driver.
-///
-/// Attempts to send the error via the contained io_err channel
-/// to the listener and shuts down the driver.
-macro_rules! hard_io_err {
-    ($this:ident, $err:expr) => {{
-        let _ = $this
-            .io_err
-            .take()
-            .expect("polling after I/O error")
-            .send($err);
-
-        // Shutdown the driver by completing the future
-        return Ok(Async::Ready(()));
-    }};
-}
-
 // To make the driver work in the background on an executor, we represent
 // it as future that only ever resolves in case of an error, or when the
 // listener and all streams have been dropped.
@@ -175,91 +318,9 @@ impl Future for Driver {
                 return Ok(Async::Ready(()));
             }
 
-            // Ensure new connections are getting picked up
-            //
-            // TODO: Refactor this somehow. This is super less-than-ideal,
-            // because receiving a lot of new connections can block the processing
-            // of already-opened ones. Ideally we'd separate these concerns and let
-            // the backpressure of new connections not apply to the handling of
-            // existing connections.
-            if let Some(ref mut fut) = self.new_conn_fut.as_mut() {
-                match fut.poll() {
-                    Ok(Async::Ready(sender)) => self.new_conn = Some(sender),
-                    Ok(Async::NotReady) => return Ok(Async::NotReady),
-                    // Listener has been dropped, but some streams may still be alive
-                    Err(_) => {}
-                }
-            }
-            self.new_conn_fut = None;
-
-            // Read a segment from the socket
-            let (maybe_segment, addr) = match self.recv_segment() {
-                Ok(Async::Ready(data)) => data,
-                Ok(Async::NotReady) => return Ok(Async::NotReady),
-                Err(e) => hard_io_err!(self, e),
-            };
-
-            if let Some(conn) = self.conn_map.get_mut(&addr) {
-                // We have a connection which we need to forward the segment
-                // parsing result to.
-
-                // TODO: We'd actually would like to apply backpressure here, but
-                // not sure how without affecting all other connections as well.
-                match conn.try_send(maybe_segment) {
-                    Ok(_) => {}
-                    Err(ref e) if e.is_disconnected() => {
-                        self.conn_map.remove(&addr);
-                    }
-                    Err(ref e) if e.is_full() => {
-                        warn!("discarding segment due to overpressure");
-                    }
-                    Err(e) => unreachable!("unknown channel failure: {:?}", e),
-                }
-            } else if let Some(new_conn) = self.new_conn.take() {
-                // We need to check whether the given segment is a SYN-> segment
-                // and actually initialize the new connection.
-
-                if maybe_segment.is_err() {
-                    trace!("discarding segment because its invalid");
-                    self.new_conn = Some(new_conn);
-
-                    continue;
-                }
-
-                // Safe due to check above
-                let segment = maybe_segment.unwrap();
-
-                if !segment.is_syn1() {
-                    trace!("discarding init segment because it's not SYN->");
-                    self.new_conn = Some(new_conn);
-
-                    continue;
-                }
-
-                // Create sending socket and bind it to the remote address
-                let maybe_sock =
-                    UdpSocket::bind(&addr).inspect_mut(|s| s.connect(&addr));
-                let sock = match maybe_sock {
-                    Ok(sock) => sock,
-                    Err(e) => hard_io_err!(self, e),
-                };
-
-                let (mut tx, rx) = mpsc::channel(STREAM_SEGMENT_QUEUE_SIZE);
-
-                // Queue initial segment for processing in the SutpStream
-                tx.try_send(Ok(segment))
-                    .expect("failed to queue initial segment");
-
-                self.conn_map.insert(addr, tx);
-
-                let stream = Accept::from_listener(sock, rx);
-                self.new_conn_fut = Some(new_conn.send((stream, addr)));
-            } else {
-                // The segment is invalid and we don't know where it's coming from,
-                // or the listener has been dropped and we cannot accept new
-                // connections.
-
-                trace!("received invalid segment from unknown address");
+            match (self.poll_recv()?, self.poll_send()?) {
+                (Async::NotReady, Async::NotReady) => return Ok(Async::NotReady),
+                _ => {}
             }
         }
     }

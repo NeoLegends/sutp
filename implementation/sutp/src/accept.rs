@@ -6,13 +6,15 @@ use crate::{
     stream::SutpStream,
     CONNECTION_TIMEOUT, RESPONSE_SEGMENT_TIMEOUT,
 };
+use bytes::Bytes;
 use futures::{prelude::*, sync::mpsc, try_ready};
 use rand;
 use std::{
     io::{self, Error, ErrorKind},
+    net::SocketAddr,
     num::Wrapping,
 };
-use tokio::{clock, net::udp::UdpSocket, timer::Delay};
+use tokio::{clock, timer::Delay};
 
 const DRIVER_AWAY: &str = "driver has gone away";
 const MISSING_SGMT: &str = "missing segment";
@@ -44,11 +46,14 @@ pub struct Accept {
     /// The channel of incoming segments.
     recv: Option<mpsc::Receiver<Result<Segment, io::Error>>>,
 
+    /// The address of the remote endpoint.
+    remote_addr: SocketAddr,
+
     /// The current remote sequence number.
     remote_seq_no: Wrapping<u32>,
 
-    /// The socket to send segments over.
-    send_socket: Option<UdpSocket>,
+    /// The channel to send outgoing segments over.
+    send: mpsc::Sender<(Bytes, SocketAddr)>,
 }
 
 impl Accept {
@@ -56,8 +61,9 @@ impl Accept {
     ///
     /// `recv` is expected to eventually contain the initial SYN-> segment.
     pub(crate) fn from_listener(
-        sock: UdpSocket,
+        addr: SocketAddr,
         recv: mpsc::Receiver<Result<Segment, Error>>,
+        send: mpsc::Sender<(Bytes, SocketAddr)>,
     ) -> Self {
         Self {
             ack_segment: None,
@@ -66,8 +72,9 @@ impl Accept {
             conn_timeout: None,
             local_seq_no: Wrapping(rand::random()),
             recv: Some(recv),
+            remote_addr: addr,
             remote_seq_no: Wrapping(0),
-            send_socket: Some(sock),
+            send,
         }
     }
 
@@ -230,8 +237,9 @@ impl Future for Accept {
             // Build up the actual stream and resolve the future
             let stream = SutpStream::create(
                 rx,
-                self.send_socket.take().expect(POLLED_TWICE),
+                self.send.clone(),
                 self.local_seq_no + Wrapping(1),
+                self.remote_addr,
                 self.remote_seq_no,
                 window_size,
                 self.compression_algorithm,

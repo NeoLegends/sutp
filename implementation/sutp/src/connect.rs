@@ -7,6 +7,7 @@ use crate::{
     stream::SutpStream,
     ResultExt, CONNECTION_TIMEOUT, RESPONSE_SEGMENT_TIMEOUT,
 };
+use bytes::Bytes;
 use futures::{
     prelude::*,
     sync::{mpsc, oneshot},
@@ -64,11 +65,14 @@ struct Inner {
     /// The channel of incoming segments.
     recv: Option<mpsc::Receiver<Result<Segment, Error>>>,
 
+    /// The remote socket address.
+    remote_addr: SocketAddr,
+
     /// The remote sequence number.
     remote_seq_no: Wrapping<u32>,
 
-    /// The socket to send segments over.
-    sock: Option<UdpSocket>,
+    /// The channel to send outgoing segments to the driver.
+    send: mpsc::Sender<(Bytes, SocketAddr)>,
 
     /// The internal automaton state.
     state: State,
@@ -120,14 +124,16 @@ impl Inner {
     /// Panics if the driver cannot be spawned to the default executor.
     pub fn new(addr: &SocketAddr) -> Result<Self, Error> {
         let (err_tx, err_rx) = oneshot::channel();
-        let (sgmt_tx, sgmt_rx) = mpsc::channel(NEW_CONN_QUEUE_SIZE);
+        let (from_driver_tx, from_driver_rx) = mpsc::channel(NEW_CONN_QUEUE_SIZE);
+        let (to_driver_tx, to_driver_rx) = mpsc::channel(NEW_CONN_QUEUE_SIZE);
 
         // Spawn a driver for this connection
         let driver = Driver::from_connection(
             UdpSocket::bind(&BIND_ADDR)?,
             err_tx,
             addr,
-            sgmt_tx,
+            from_driver_tx,
+            to_driver_rx,
         );
         tokio::spawn(driver);
 
@@ -147,15 +153,15 @@ impl Inner {
                 .build()
                 .to_vec()
         };
-        let socket = UdpSocket::bind(&BIND_ADDR).inspect_mut(|s| s.connect(addr))?;
 
         Ok(Self {
             io_err: Some(err_rx),
             init_segment_buf: initial_sgmt_buf,
             local_seq_no: seq_no,
-            recv: Some(sgmt_rx),
+            recv: Some(from_driver_rx),
+            remote_addr: *addr,
             remote_seq_no: Wrapping(0),
-            sock: Some(socket),
+            send: to_driver_tx,
             state: State::Start,
             timeout: conn_timeout,
         })
@@ -263,8 +269,9 @@ impl Future for Inner {
                     // Create the actual stream
                     let stream = SutpStream::create(
                         self.recv.take().expect(POLLED_TWICE),
-                        self.sock.take().expect(POLLED_TWICE),
+                        self.send.clone(),
                         self.local_seq_no,
+                        self.remote_addr,
                         Wrapping(response.seq_no),
                         response.window_size,
                         response.select_compression_alg(),
