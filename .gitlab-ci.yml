@@ -2,5 +2,9 @@ image: 'rust:latest'
 
 rust_impl:
   stage: test
+  before_script:
+    - rustup component add rustfmt
   script:
-    - cargo test --verbose --jobs 1
+    - cargo fmt --all -- --check
+    - cargo build
+    - cargo test --verbose
