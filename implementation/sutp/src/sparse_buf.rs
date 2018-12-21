@@ -51,7 +51,7 @@ pub enum InsertError<T> {
 impl<T, F> SparseBuffer<T, F> {
     /// Creates a new sparse buffer.
     ///
-    /// Care must be taken that `key_fn` yields monotonically increasing
+    /// Care must be taken that `key_fn` yields monotonically increasing keys.
     ///
     /// # Panics
     ///
