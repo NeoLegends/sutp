@@ -465,6 +465,42 @@ mod tests {
     }
 
     #[test]
+    fn illegal_duplication_invalid() {
+        let segment = SegmentBuilder::new()
+            .seq_no(1)
+            .window_size(1)
+            .with_chunk(Chunk::Syn)
+            .with_chunk(Chunk::Syn)
+            .with_chunk(Chunk::Abort)
+            .with_chunk(Chunk::Abort)
+            .with_chunk(Chunk::Fin)
+            .with_chunk(Chunk::Fin)
+            .build();
+
+        assert_eq!(
+            Some(Issue::DuplicatedChunks {
+                abrt: true,
+                fin: true,
+                syn: true,
+            }),
+            segment.check_illegal_duplication()
+        );
+    }
+
+    #[test]
+    fn illegal_duplication_valid() {
+        let segment = SegmentBuilder::new()
+            .seq_no(1)
+            .window_size(1)
+            .with_chunk(Chunk::Syn)
+            .with_chunk(Chunk::Abort)
+            .with_chunk(Chunk::Fin)
+            .build();
+
+        assert_eq!(None, segment.check_illegal_duplication());
+    }
+
+    #[test]
     fn select_compression_negotiation() {
         let segment = SegmentBuilder::new()
             .seq_no(1)
@@ -478,6 +514,23 @@ mod tests {
         assert_eq!(
             segment.select_compression_alg(),
             Some(CompressionAlgorithm::Gzip),
+        );
+    }
+
+    #[test]
+    fn select_compression_negotiation_mixed() {
+        let segment = SegmentBuilder::new()
+            .seq_no(1)
+            .window_size(1)
+            .with_chunk(Chunk::CompressionNegotiation(vec![
+                CompressionAlgorithm::Unknown(100),
+                CompressionAlgorithm::Snappy,
+            ]))
+            .build();
+
+        assert_eq!(
+            segment.select_compression_alg(),
+            Some(CompressionAlgorithm::Snappy),
         );
     }
 
@@ -505,58 +558,8 @@ mod tests {
         assert!(segment.select_compression_alg().is_none());
     }
 
-    /// Ensure we cannot read data from nothing.
     #[test]
-    fn zero_input() {
-        let mut data = Bytes::new();
-
-        match Segment::read_from(&mut data) {
-            Ok(_) => panic!("Read segment from empty data."),
-            Err(ref e) if e.kind() != ErrorKind::UnexpectedEof => {
-                panic!("Unexpected error kind")
-            }
-            _ => {}
-        }
-    }
-
-    #[test]
-    fn illegal_chunk_duplication_test() {
-        let segment = SegmentBuilder::new()
-            .seq_no(1)
-            .window_size(1)
-            .with_chunk(Chunk::Syn)
-            .with_chunk(Chunk::Syn)
-            .with_chunk(Chunk::Abort)
-            .with_chunk(Chunk::Abort)
-            .with_chunk(Chunk::Fin)
-            .with_chunk(Chunk::Fin)
-            .build();
-
-        assert_eq!(
-            Some(Issue::DuplicatedChunks {
-                abrt: true,
-                fin: true,
-                syn: true,
-            }),
-            segment.check_illegal_duplication()
-        );
-    }
-
-    #[test]
-    fn no_illegal_chunk_duplication_test() {
-        let segment = SegmentBuilder::new()
-            .seq_no(1)
-            .window_size(1)
-            .with_chunk(Chunk::Syn)
-            .with_chunk(Chunk::Abort)
-            .with_chunk(Chunk::Fin)
-            .build();
-
-        assert_eq!(None, segment.check_illegal_duplication());
-    }
-
-    #[test]
-    fn segment_and_chunk_parsing_test() {
+    fn serde() {
         let segment = SegmentBuilder::new()
             .seq_no(1)
             .window_size(2)
@@ -576,5 +579,19 @@ mod tests {
             segment,
             Segment::read_from_with_crc32(&mut serialized_segment).unwrap(),
         );
+    }
+
+    /// Ensure we cannot read data from nothing.
+    #[test]
+    fn zero_input() {
+        let mut data = Bytes::new();
+
+        match Segment::read_from(&mut data) {
+            Ok(_) => panic!("Read segment from empty data."),
+            Err(ref e) if e.kind() != ErrorKind::UnexpectedEof => {
+                panic!("Unexpected error kind")
+            }
+            _ => {}
+        }
     }
 }
