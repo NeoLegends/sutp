@@ -294,7 +294,7 @@ impl<T> Display for InsertError<T> {
                 "cannot insert element, the distance to the other elements is too large",
             ),
             InsertError::KeyTooLow(_) => {
-                write!(fmt, "cannot insert element because the key is too low",)
+                write!(fmt, "cannot insert element because the key is too low")
             }
             InsertError::WouldOverwrite(_) => write!(
                 fmt,
