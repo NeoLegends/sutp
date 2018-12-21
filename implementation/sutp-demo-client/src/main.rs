@@ -10,7 +10,7 @@ fn main() {
     let fut = SutpStream::connect(&addr)
         .and_then(|stream| write_all(stream, &b"Hello World!"))
         .and_then(|(stream, _)| flush(stream))
-        .and_then(|stream| shutdown(stream))
+        .and_then(shutdown)
         .map_err(|e| panic!("err: {:?}", e))
         .map(|_| ());
 

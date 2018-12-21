@@ -1,6 +1,6 @@
 use futures::prelude::*;
 
-use crate::branch::Branch;
+use crate::branch::{self, Branch};
 use crate::graceful::Graceful;
 
 /// Stream extensions.
@@ -40,7 +40,7 @@ impl<T: Stream> StreamExt for T {
         Self: Sized + Stream,
         F: FnMut(&T::Item) -> bool,
     {
-        Branch::new(self, filter)
+        branch::split(self, filter)
     }
 
     fn graceful(self) -> Graceful<Self>

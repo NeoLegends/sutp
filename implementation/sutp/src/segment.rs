@@ -62,24 +62,24 @@ pub struct ValidationError {
 
 impl AckNak {
     /// Checks whether the AckNak is the ACK variant.
-    pub fn is_ack(&self) -> bool {
-        match *self {
+    pub fn is_ack(self) -> bool {
+        match self {
             AckNak(Some(v)) => v,
             _ => false,
         }
     }
 
     /// Whether the ACK / NAK state is known.
-    pub fn is_known(&self) -> bool {
-        match *self {
+    pub fn is_known(self) -> bool {
+        match self {
             AckNak(Some(_)) => true,
             _ => false,
         }
     }
 
     /// Checks whether the AckNak is the NAK variant.
-    pub fn is_nak(&self) -> bool {
-        match *self {
+    pub fn is_nak(self) -> bool {
+        match self {
             AckNak(Some(v)) => !v,
             _ => false,
         }

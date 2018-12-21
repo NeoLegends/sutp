@@ -21,7 +21,7 @@ use tokio::{
 };
 
 /// The default size of the receiving and sending buffers.
-const BUF_SIZE: usize = 1024 * 1024 * 1; // 1MB
+const BUF_SIZE: usize = 1024 * 1024; // 1MB
 
 /// The 1 as wrapping u32.
 const ONE: Wrapping<u32> = Wrapping(1);
@@ -463,7 +463,7 @@ impl Outgoing {
             };
         }
 
-        return Ok(true);
+        Ok(true)
     }
 
     /// Sets the segment to be immediately sent again.

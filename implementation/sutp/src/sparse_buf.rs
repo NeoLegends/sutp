@@ -120,7 +120,7 @@ impl<T, F> SparseBuffer<T, F> {
 
 impl<T, F: Fn(&T) -> usize> SparseBuffer<T, F> {
     /// Obtains a draining iterator that repeatedly calls `.pop()`.
-    pub fn drain<'a>(&'a mut self) -> Drain<'a, T, F> {
+    pub fn drain(&mut self) -> Drain<'_, T, F> {
         Drain { buf: self }
     }
 
@@ -149,7 +149,7 @@ impl<T, F: Fn(&T) -> usize> SparseBuffer<T, F> {
     /// Returns a reference to the smallest element in the sparse buffer without
     /// removing it from the buffer.
     pub fn peek(&self) -> Option<&T> {
-        self.buf.get(self.head).unwrap().as_ref()
+        self.buf[self.head].as_ref()
     }
 
     /// Attempts to remove the "smallest" item from the sparse buffer.

@@ -22,46 +22,48 @@ pub struct Branch<T, I, F> {
     send_fut: Option<Send<Sender<I>>>,
 }
 
+/// Branches the given stream into two, based on the given predicate.
+///
+/// The first branch receives the items where `filter` returns true,
+/// the other one receives the items where `filter` returns false.
+///
+/// Errors are passed to the stream which ever is currently `poll`ing.
+pub fn split<T, F>(
+    stream: T,
+    filter: F,
+) -> (Branch<T, T::Item, F>, Branch<T, T::Item, F>)
+where
+    T: Stream,
+    F: FnMut(&T::Item) -> bool,
+{
+    // Create rendezvous channels for backpressure
+    let (tx_a, rx_b) = channel(0);
+    let (tx_b, rx_a) = channel(0);
+
+    let (inner_a, inner_b) = BiLock::new(Inner { filter, stream });
+
+    let a = Branch {
+        filter_val: true,
+        inner: inner_a,
+        recv: rx_a,
+        send: Some(tx_a),
+        send_fut: None,
+    };
+    let b = Branch {
+        filter_val: false,
+        inner: inner_b,
+        recv: rx_b,
+        send: Some(tx_b),
+        send_fut: None,
+    };
+
+    (a, b)
+}
+
 #[derive(Debug)]
 struct Inner<T, F> {
     pub filter: F,
     pub stream: T,
-}
-
-impl<T: Stream, F: FnMut(&T::Item) -> bool> Branch<T, T::Item, F> {
-    /// Branches the given stream into two, based on the given predicate.
-    ///
-    /// The first branch receives the items where `filter` returns true,
-    /// the other one receives the items where `filter` returns false.
-    ///
-    /// Errors are passed to the stream which ever is currently `poll`ing.
-    pub fn new(
-        stream: T,
-        filter: F,
-    ) -> (Branch<T, T::Item, F>, Branch<T, T::Item, F>) {
-        // Create rendezvous channels for backpressure
-        let (tx_a, rx_b) = channel(0);
-        let (tx_b, rx_a) = channel(0);
-
-        let (inner_a, inner_b) = BiLock::new(Inner { filter, stream });
-
-        let a = Branch {
-            filter_val: true,
-            inner: inner_a,
-            recv: rx_a,
-            send: Some(tx_a),
-            send_fut: None,
-        };
-        let b = Branch {
-            filter_val: false,
-            inner: inner_b,
-            recv: rx_b,
-            send: Some(tx_b),
-            send_fut: None,
-        };
-
-        (a, b)
-    }
 }
 
 impl<T: Stream, F: FnMut(&T::Item) -> bool> Stream for Branch<T, T::Item, F> {
@@ -91,7 +93,7 @@ impl<T: Stream, F: FnMut(&T::Item) -> bool> Stream for Branch<T, T::Item, F> {
             match self.recv.poll() {
                 Ok(Async::Ready(Some(it))) => return Ok(Async::Ready(Some(it))),
                 Ok(Async::Ready(None)) | Ok(Async::NotReady) => {}
-                Err(_) => panic!("receiver cannot error"),
+                Err(_) => unreachable!("receiver cannot error"),
             };
 
             // Now acquire the lock and poll the underlying stream for items.
