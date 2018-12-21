@@ -1,13 +1,11 @@
 //! Implements the future that builds up a new connection.
 
 use crate::{
-    ResultExt,
-    CONNECTION_TIMEOUT,
-    RESPONSE_SEGMENT_TIMEOUT,
     chunk::{Chunk, SUPPORTED_COMPRESSION_ALGS},
     driver::{Driver, NEW_CONN_QUEUE_SIZE},
     segment::{Segment, SegmentBuilder},
     stream::SutpStream,
+    ResultExt, CONNECTION_TIMEOUT, RESPONSE_SEGMENT_TIMEOUT,
 };
 use futures::{
     prelude::*,
@@ -21,11 +19,7 @@ use std::{
     net::{IpAddr, Ipv4Addr, SocketAddr},
     num::Wrapping,
 };
-use tokio::{
-    clock,
-    net::UdpSocket,
-    timer::Delay,
-};
+use tokio::{clock, net::UdpSocket, timer::Delay};
 
 const POLLED_TWICE: &str = "cannot poll Connect twice";
 
@@ -153,8 +147,7 @@ impl Inner {
                 .build()
                 .to_vec()
         };
-        let socket = UdpSocket::bind(&BIND_ADDR)
-            .inspect_mut(|s| s.connect(addr))?;
+        let socket = UdpSocket::bind(&BIND_ADDR).inspect_mut(|s| s.connect(addr))?;
 
         Ok(Self {
             io_err: Some(err_rx),
@@ -199,7 +192,9 @@ impl Inner {
     /// Panics if the receiver stream has ended. This shouldn't happen
     /// normally, though.
     fn poll_segment(&mut self) -> Poll<Result<Segment, Error>, Error> {
-        let val = self.recv.as_mut()
+        let val = self
+            .recv
+            .as_mut()
             .expect(POLLED_TWICE)
             .poll()
             .expect("driver has gone away")
@@ -232,22 +227,23 @@ impl Future for Inner {
             match &mut self.state {
                 State::Start => {
                     try_ready!({
-                        self.sock.as_mut()
+                        self.sock
+                            .as_mut()
                             .expect(POLLED_TWICE)
                             .poll_send(&self.init_segment_buf)
                     });
 
                     let timeout = clock::now() + RESPONSE_SEGMENT_TIMEOUT;
                     self.state = State::WaitingForResponse(Delay::new(timeout));
-                },
+                }
                 State::WaitingForResponse(timeout) => {
                     // If the timeout for the response has elapsed, retry
                     match timeout.poll() {
                         Ok(Async::Ready(_)) => {
                             self.state = State::Start;
                             continue;
-                        },
-                        Ok(Async::NotReady) => {},
+                        }
+                        Ok(Async::NotReady) => {}
                         Err(e) => return Err(Error::new(ErrorKind::Other, e)),
                     }
 
@@ -257,7 +253,7 @@ impl Future for Inner {
                         Err(_) => {
                             self.state = State::Start;
                             continue;
-                        },
+                        }
                     };
                     if !response.is_syn2_and_acks(self.local_seq_no.0) {
                         self.state = State::Start;
@@ -275,7 +271,7 @@ impl Future for Inner {
                     );
 
                     return Ok(Async::Ready(stream));
-                },
+                }
             }
         }
     }

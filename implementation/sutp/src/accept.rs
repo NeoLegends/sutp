@@ -1,27 +1,18 @@
 //! Implements the future that accepts a new connection.
 
 use crate::{
-    CONNECTION_TIMEOUT,
-    RESPONSE_SEGMENT_TIMEOUT,
     chunk::{Chunk, CompressionAlgorithm},
     segment::{Segment, SegmentBuilder},
     stream::SutpStream,
+    CONNECTION_TIMEOUT, RESPONSE_SEGMENT_TIMEOUT,
 };
-use futures::{
-    prelude::*,
-    sync::mpsc,
-    try_ready,
-};
+use futures::{prelude::*, sync::mpsc, try_ready};
 use rand;
 use std::{
     io::{self, Error, ErrorKind},
     num::Wrapping,
 };
-use tokio::{
-    clock,
-    net::udp::UdpSocket,
-    timer::Delay,
-};
+use tokio::{clock, net::udp::UdpSocket, timer::Delay};
 
 const DRIVER_AWAY: &str = "driver has gone away";
 const MISSING_SGMT: &str = "missing segment";
@@ -108,7 +99,9 @@ impl Accept {
     /// Panics if the receiver stream has ended. This shouldn't happen
     /// normally, though.
     fn poll_segment(&mut self) -> Poll<Result<Segment, Error>, Error> {
-        let val = self.recv.as_mut()
+        let val = self
+            .recv
+            .as_mut()
             .expect(POLLED_TWICE)
             .poll()
             .expect(DRIVER_AWAY)
@@ -122,7 +115,7 @@ impl Accept {
     fn poll_segment_timeout(&mut self) -> Poll<(), Error> {
         if let Some(ref mut delay) = self.ack_timeout {
             match delay.poll() {
-                Ok(Async::Ready(_)) => {},
+                Ok(Async::Ready(_)) => {}
                 Ok(Async::NotReady) => return Ok(Async::NotReady),
                 Err(e) => return Err(Error::new(ErrorKind::Other, e)),
             }
@@ -227,10 +220,11 @@ impl Future for Accept {
                 (tx.sink_map_err(|e| panic!("channel tx err: {:?}", e)), rx)
             };
             tokio::spawn(
-                self.recv.take()
+                self.recv
+                    .take()
                     .expect(POLLED_TWICE)
                     .forward(tx)
-                    .map(|_| ())
+                    .map(|_| ()),
             );
 
             // Build up the actual stream and resolve the future

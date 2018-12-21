@@ -1,12 +1,12 @@
 //! This module implements the data format of segments as specified in
 //! https://laboratory.comsys.rwth-aachen.de/sutp/data-format/blob/master/README.md.
 
+use crate::{
+    chunk::{Chunk, CompressionAlgorithm},
+    ResultExt,
+};
 use byteorder::{ByteOrder, NetworkEndian, WriteBytesExt};
 use bytes::{Buf, Bytes, IntoBuf};
-use crate::{
-    ResultExt,
-    chunk::{Chunk, CompressionAlgorithm},
-};
 use flate2::{Crc, CrcWriter};
 use std::{
     error::Error as StdError,
@@ -48,11 +48,7 @@ pub enum Issue {
     Conflict,
 
     /// There is illegal chunk duplication.
-    DuplicatedChunks {
-        abrt: bool,
-        fin: bool,
-        syn: bool,
-    },
+    DuplicatedChunks { abrt: bool, fin: bool, syn: bool },
 
     /// The segment does not contain any chunks.
     NoChunks,
@@ -93,14 +89,14 @@ impl AckNak {
 impl Segment {
     /// Checks whether this segment ACKs or NAKs the given one.
     pub fn ack(&self, other_seq_no: u32) -> AckNak {
-        self.chunks.iter()
+        self.chunks
+            .iter()
             .filter_map(|ch| match ch {
                 Chunk::Sack(ack, nak_list) => Some((ack, nak_list)),
                 _ => None,
             })
             .filter_map(|(&ack, nak_list)| {
-                let is_nakd = nak_list.iter()
-                    .any(|&nak| other_seq_no == nak);
+                let is_nakd = nak_list.iter().any(|&nak| other_seq_no == nak);
 
                 if is_nakd {
                     Some(AckNak(Some(false)))
@@ -117,9 +113,7 @@ impl Segment {
     /// Gets the length of the segment in bytes if it were serialized in
     /// serialized form.
     pub fn binary_len(&self) -> usize {
-        let chunk_len: usize = self.chunks.iter()
-            .map(|ch| ch.binary_len())
-            .sum();
+        let chunk_len: usize = self.chunks.iter().map(|ch| ch.binary_len()).sum();
 
         chunk_len + BINARY_OVERHEAD // 64 bit header + 32 bit CRC
     }
@@ -128,10 +122,8 @@ impl Segment {
     /// segment. That is, the very first segment on the wire used to intiate
     /// a connection.
     pub fn is_syn1(&self) -> bool {
-        let contains_syn = self.chunks.iter()
-            .any(|ch| ch.is_syn());
-        let contains_sack = self.chunks.iter()
-            .any(|ch| ch.is_sack());
+        let contains_syn = self.chunks.iter().any(|ch| ch.is_syn());
+        let contains_sack = self.chunks.iter().any(|ch| ch.is_sack());
 
         contains_syn && !contains_sack
     }
@@ -140,8 +132,7 @@ impl Segment {
     /// segment. That is, the second segment sent in response to the first
     /// segment on the wire.
     pub fn is_syn2_and_acks(&self, syn1_seq_no: u32) -> bool {
-        let contains_syn = self.chunks.iter()
-            .any(|ch| ch.is_syn());
+        let contains_syn = self.chunks.iter().any(|ch| ch.is_syn());
 
         contains_syn && self.ack(syn1_seq_no).is_ack()
     }
@@ -149,7 +140,8 @@ impl Segment {
     /// Selects the most-preferred supported compression algorithm,
     /// if one is present.
     pub fn select_compression_alg(&self) -> Option<CompressionAlgorithm> {
-        self.chunks.iter()
+        self.chunks
+            .iter()
             .filter(|ch| ch.is_compression_negotiation())
             .flat_map(|ch| match ch {
                 Chunk::CompressionNegotiation(list) => list,
@@ -184,10 +176,8 @@ impl Segment {
 
     /// Checks whether the segment contains chunk conflicts.
     fn check_conflicts(&self) -> Option<Issue> {
-        let contains_abrt = self.chunks.iter()
-            .any(|ch| ch.is_abrt());
-        let all_abort = self.chunks.iter()
-            .all(|ch| ch.is_abrt());
+        let contains_abrt = self.chunks.iter().any(|ch| ch.is_abrt());
+        let all_abort = self.chunks.iter().all(|ch| ch.is_abrt());
 
         if contains_abrt && !all_abort {
             Some(Issue::Conflict)
@@ -201,15 +191,9 @@ impl Segment {
     ///
     /// For example, flag chunks cannot be duplicated to avoid ambiguities.
     fn check_illegal_duplication(&self) -> Option<Issue> {
-        let abrt_count = self.chunks.iter()
-            .filter(|ch| ch.is_abrt())
-            .count();
-        let fin_count = self.chunks.iter()
-            .filter(|ch| ch.is_fin())
-            .count();
-        let syn_count = self.chunks.iter()
-            .filter(|ch| ch.is_syn())
-            .count();
+        let abrt_count = self.chunks.iter().filter(|ch| ch.is_abrt()).count();
+        let fin_count = self.chunks.iter().filter(|ch| ch.is_fin()).count();
+        let syn_count = self.chunks.iter().filter(|ch| ch.is_syn()).count();
 
         if abrt_count > 1 || fin_count > 1 || syn_count > 1 {
             Some(Issue::DuplicatedChunks {
@@ -241,8 +225,8 @@ impl Segment {
 
         Ok(Segment {
             chunks: chunk_list,
-            seq_no: seq_no,
-            window_size: window_size,
+            seq_no,
+            window_size,
         })
     }
 
@@ -270,8 +254,7 @@ impl Segment {
                 ErrorKind::InvalidData,
                 format!(
                     "crc32 sum mismatch: got {:X}, wanted {:X}",
-                    actual_crc,
-                    expected_crc,
+                    actual_crc, expected_crc,
                 ),
             ));
         }
@@ -288,11 +271,11 @@ impl Segment {
     /// It is strongly advised to pass a buffering `io.Read` implementation
     /// since the parser will issue lots of small calls to `read`.
     pub fn read_from_and_validate(r: &mut Bytes) -> io::Result<Segment> {
-        Self::read_from_with_crc32(r)
-            .inspect_mut(|segment| {
-                segment.validate()
-                    .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
-            })
+        Self::read_from_with_crc32(r).inspect_mut(|segment| {
+            segment
+                .validate()
+                .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
+        })
     }
 
     /// Writes the segment to the given writer.
@@ -319,7 +302,9 @@ impl Segment {
         self.write_to(&mut crc_writer)?;
 
         let crc_sum = crc_writer.crc().sum();
-        crc_writer.into_inner().write_u32::<NetworkEndian>(crc_sum)?;
+        crc_writer
+            .into_inner()
+            .write_u32::<NetworkEndian>(crc_sum)?;
 
         Ok(())
     }
@@ -398,7 +383,7 @@ impl Display for Issue {
 
                 let joined = duplicated.join(", ");
                 write!(fmt, "duplicated {}", joined)
-            },
+            }
             Issue::NoChunks => "empty chunk list".fmt(fmt),
         }
     }
@@ -425,7 +410,9 @@ impl ValidationError {
 
 impl Display for ValidationError {
     fn fmt(&self, fmt: &mut Formatter) -> FmtResult {
-        let joined = self.issues.iter()
+        let joined = self
+            .issues
+            .iter()
             .map(|i| i.to_string())
             .collect::<Vec<_>>()
             .join("; ");
@@ -438,15 +425,12 @@ impl StdError for ValidationError {}
 
 #[cfg(test)]
 mod tests {
-    use std::io::ErrorKind;
     use super::*;
+    use std::io::ErrorKind;
 
     #[test]
     fn binary_len() {
-        let sq_empty = SegmentBuilder::new()
-            .seq_no(20)
-            .window_size(10)
-            .build();
+        let sq_empty = SegmentBuilder::new().seq_no(20).window_size(10).build();
         assert_eq!(sq_empty.binary_len(), BINARY_OVERHEAD);
 
         let sq_1_ch = SegmentBuilder::new()
@@ -523,9 +507,10 @@ mod tests {
 
         match Segment::read_from(&mut data) {
             Ok(_) => panic!("Read segment from empty data."),
-            Err(ref e) if e.kind() != ErrorKind::UnexpectedEof =>
-                panic!("Unexpected error kind"),
-            _ => {},
+            Err(ref e) if e.kind() != ErrorKind::UnexpectedEof => {
+                panic!("Unexpected error kind")
+            }
+            _ => {}
         }
     }
 
@@ -542,11 +527,14 @@ mod tests {
             .with_chunk(Chunk::Fin)
             .build();
 
-        assert_eq!(Some(Issue::DuplicatedChunks {
+        assert_eq!(
+            Some(Issue::DuplicatedChunks {
                 abrt: true,
                 fin: true,
                 syn: true,
-            }), segment.check_illegal_duplication());
+            }),
+            segment.check_illegal_duplication()
+        );
     }
 
     #[test]
@@ -569,8 +557,10 @@ mod tests {
             .window_size(2)
             .with_chunk(Chunk::Syn)
             .with_chunk(Chunk::Abort)
-            .with_chunk(Chunk::Sack(4, vec![5,6,7]))
-            .with_chunk(Chunk::CompressionNegotiation(vec![CompressionAlgorithm::Gzip]))
+            .with_chunk(Chunk::Sack(4, vec![5, 6, 7]))
+            .with_chunk(Chunk::CompressionNegotiation(vec![
+                CompressionAlgorithm::Gzip,
+            ]))
             .with_chunk(Chunk::Payload(Bytes::new()))
             .with_chunk(Chunk::SecurityFlag(false))
             .with_chunk(Chunk::Fin)

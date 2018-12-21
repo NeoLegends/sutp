@@ -1,17 +1,12 @@
-use bytes::{Buf, BufMut, Bytes, BytesMut, IntoBuf};
 use crate::{
-    CONNECTION_TIMEOUT,
-    RESPONSE_SEGMENT_TIMEOUT,
     chunk::{Chunk, CompressionAlgorithm},
     connect::Connect,
     segment::{Segment, SegmentBuilder},
-    sparse_buf::{SparseBuffer, InsertError},
+    sparse_buf::{InsertError, SparseBuffer},
+    CONNECTION_TIMEOUT, RESPONSE_SEGMENT_TIMEOUT,
 };
-use futures::{
-    prelude::*,
-    sync::mpsc,
-    try_ready,
-};
+use bytes::{Buf, BufMut, Bytes, BytesMut, IntoBuf};
+use futures::{prelude::*, sync::mpsc, try_ready};
 use std::{
     collections::{BTreeMap, BTreeSet},
     io::{self, Error, ErrorKind, Read, Write},
@@ -208,7 +203,7 @@ impl SutpStream {
     /// Asynchronously tries to read data off the stream.
     fn poll_read(&mut self, buf: &mut [u8]) -> Poll<usize, io::Error> {
         match self.state {
-            StreamState::Open => {},
+            StreamState::Open => {}
             StreamState::FinRecvd => unimplemented!(),
             _ => return Err(ErrorKind::NotConnected.into()),
         }
@@ -216,7 +211,8 @@ impl SutpStream {
         self.poll_recv()?;
 
         let copy_count = buf.len().min(self.r_buf.len());
-        self.r_buf.split_to(copy_count)
+        self.r_buf
+            .split_to(copy_count)
             .freeze()
             .into_buf()
             .copy_to_slice(&mut buf[..copy_count]);
@@ -228,11 +224,12 @@ impl SutpStream {
     fn poll_recv(&mut self) -> Result<(), io::Error> {
         loop {
             // Check for new segments on the channel
-            let poll_res = self.recv.poll()
-                .map_err(|_| io::Error::new(
-                    ErrorKind::Other,
-                    "driver has gone away",
-                ))?
+            let poll_res = self
+                .recv
+                .poll()
+                .map_err(|_| {
+                    io::Error::new(ErrorKind::Other, "driver has gone away")
+                })?
                 .map(|maybe| maybe.expect("missing segment"));
             let segment = match poll_res {
                 Async::Ready(Ok(segment)) => segment,
@@ -243,27 +240,27 @@ impl SutpStream {
             // Store the sequence number in our ACK list. If that's full,
             // insert it into our NAK set (this is unbounded at the moment).
             match self.ack_set.push(segment.seq_no) {
-                Ok(_) => {},
+                Ok(_) => {}
                 Err(InsertError::DistanceTooLarge(_)) => {
                     self.nak_set.insert(segment.seq_no);
-                },
+                }
                 Err(InsertError::KeyTooLow(_)) => continue,
                 Err(InsertError::WouldOverwrite(_)) => {
                     self.nak_set.insert(segment.seq_no);
-                },
+                }
             }
 
             // Store the segment itself for later removal. If the buffer is full,
             // at it to the NAK set.
             match self.order_buf.push(segment) {
-                Ok(_) => {},
+                Ok(_) => {}
                 Err(InsertError::DistanceTooLarge(s)) => {
                     self.nak_set.insert(s.seq_no);
-                },
+                }
                 Err(InsertError::KeyTooLow(_)) => continue,
                 Err(InsertError::WouldOverwrite(s)) => {
                     self.nak_set.insert(s.seq_no);
-                },
+                }
             }
         }
 
@@ -271,26 +268,26 @@ impl SutpStream {
             self.nak_set.remove(&segment.seq_no);
 
             // Remove ACKed segments from out outgoing list
-            self.outgoing_segments = self.outgoing_segments.take()
-                .map(|outgoing| {
-                    outgoing.into_iter()
-                        .filter(|(seq_no, _)| !segment.ack(*seq_no).is_ack())
-                        .collect()
-                });
+            self.outgoing_segments = self.outgoing_segments.take().map(|outgoing| {
+                outgoing
+                    .into_iter()
+                    .filter(|(seq_no, _)| !segment.ack(*seq_no).is_ack())
+                    .collect()
+            });
 
             // Trigger immediate re-send for all outgoing NAKed segments
-            self.outgoing_segments.as_mut()
+            self.outgoing_segments
+                .as_mut()
                 .unwrap()
                 .iter_mut()
                 .filter(|(seq_no, _)| segment.ack(**seq_no).is_nak())
                 .for_each(|(_, outgoing)| outgoing.send_immediately());
 
             // TODO: This loses data if r_buf has too little space!
-            let payloads = segment.chunks.into_iter()
-                .filter_map(|ch| match ch {
-                    Chunk::Payload(data) => Some(data),
-                    _ => None,
-                });
+            let payloads = segment.chunks.into_iter().filter_map(|ch| match ch {
+                Chunk::Payload(data) => Some(data),
+                _ => None,
+            });
             for payload in payloads {
                 let copy_count = self.r_buf.remaining_mut().min(payload.len());
                 self.r_buf.put_slice(&payload[..copy_count]);
@@ -342,7 +339,8 @@ impl SutpStream {
             try_ready!(self.send_socket.poll_send(&outgoing.data));
 
             outgoing.start_timers();
-            self.remote_window_size.saturating_sub(outgoing.data.len() as u32);
+            self.remote_window_size
+                .saturating_sub(outgoing.data.len() as u32);
         }
 
         self.poll_recv()?;
@@ -387,16 +385,17 @@ impl SutpStream {
 
             let serialized_segment = {
                 self.segment_buf.reserve(segment.binary_len());
-                segment.write_to_with_crc32(&mut (&mut self.segment_buf).writer())
+                segment
+                    .write_to_with_crc32(&mut (&mut self.segment_buf).writer())
                     .unwrap(); // since we're writing to memory this is infallible
 
                 self.segment_buf.split_to(self.segment_buf.len()).freeze()
             };
 
-            self.outgoing_segments.as_mut().unwrap().insert(
-                seq_no,
-                Outgoing::new(serialized_segment),
-            );
+            self.outgoing_segments
+                .as_mut()
+                .unwrap()
+                .insert(seq_no, Outgoing::new(serialized_segment));
         }
 
         // Since everything has been copied to segment_buf, this will reclaim
@@ -452,7 +451,7 @@ impl Outgoing {
         if let Some(fut) = self.fail_timeout.as_mut() {
             match fut.poll() {
                 Ok(Async::Ready(_)) => return Err(ErrorKind::TimedOut.into()),
-                Ok(Async::NotReady) => {},
+                Ok(Async::NotReady) => {}
                 Err(e) => return Err(Error::new(ErrorKind::Other, e)),
             }
         }

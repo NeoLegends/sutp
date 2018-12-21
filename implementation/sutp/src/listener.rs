@@ -7,14 +7,8 @@ use futures::{
     sync::{mpsc, oneshot},
     try_ready,
 };
-use std::{
-    io,
-    net::SocketAddr,
-};
-use tokio::{
-    self,
-    net::udp::UdpSocket,
-};
+use std::{io, net::SocketAddr};
+use tokio::{self, net::udp::UdpSocket};
 
 /// A stream of incoming SUTP connections.
 #[derive(Debug)]
@@ -28,7 +22,6 @@ pub struct Incoming {
 pub struct SutpListener {
     // This internally consists just of two channels that connect to the driver.
     // Both channels can be used asynchronously as not to block the event loop.
-
     /// A channel receiving newly opened connections.
     conn_recv: mpsc::Receiver<(Accept, SocketAddr)>,
 
@@ -70,8 +63,7 @@ impl Stream for Incoming {
 impl SutpListener {
     /// Creates a socket bound to the given address and listens on it.
     pub fn bind(address: &SocketAddr) -> io::Result<Self> {
-        UdpSocket::bind(address)
-            .map(Self::from_socket)
+        UdpSocket::bind(address).map(Self::from_socket)
     }
 
     /// Binds the listener to the given UDP socket.
@@ -107,7 +99,11 @@ impl SutpListener {
 
         // Channel errors can only occur when the sender has been dropped, and
         // this only happens on hard I/O errors.
-        match self.conn_recv.poll().expect("cannot poll after an IO error") {
+        match self
+            .conn_recv
+            .poll()
+            .expect("cannot poll after an IO error")
+        {
             // We're given IO errors as channel items
             Async::Ready(Some(conn)) => Ok(Async::Ready(conn)),
             _ => Ok(Async::NotReady),

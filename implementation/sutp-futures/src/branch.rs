@@ -2,8 +2,8 @@ use futures::{
     prelude::*,
     sink::Send,
     sync::{
-        BiLock,
         mpsc::{channel, Receiver, Sender},
+        BiLock,
     },
     try_ready,
 };
@@ -43,9 +43,7 @@ impl<T: Stream, F: FnMut(&T::Item) -> bool> Branch<T, T::Item, F> {
         let (tx_a, rx_b) = channel(0);
         let (tx_b, rx_a) = channel(0);
 
-        let (inner_a, inner_b) = BiLock::new(
-            Inner { filter, stream }
-        );
+        let (inner_a, inner_b) = BiLock::new(Inner { filter, stream });
 
         let a = Branch {
             filter_val: true,
@@ -80,19 +78,19 @@ impl<T: Stream, F: FnMut(&T::Item) -> bool> Stream for Branch<T, T::Item, F> {
                     Ok(Async::NotReady) => {
                         self.send_fut = Some(fut);
                         return Ok(Async::NotReady);
-                    },
+                    }
 
                     // The receiver has been dropped, this means the other half
                     // has been dropped. We don't really care about this, since
                     // the user probably wants it to be like this.
-                    Err(_) => {},
+                    Err(_) => {}
                 }
             }
 
             // Check if the other task has pushed items into our queue
             match self.recv.poll() {
                 Ok(Async::Ready(Some(it))) => return Ok(Async::Ready(Some(it))),
-                Ok(Async::Ready(None)) | Ok(Async::NotReady) => {},
+                Ok(Async::Ready(None)) | Ok(Async::NotReady) => {}
                 Err(_) => panic!("receiver cannot error"),
             };
 
@@ -112,8 +110,7 @@ impl<T: Stream, F: FnMut(&T::Item) -> bool> Stream for Branch<T, T::Item, F> {
             if filter_val == self.filter_val {
                 return Ok(Async::Ready(Some(item)));
             } else {
-                self.send_fut = self.send.take()
-                    .map(|ch| ch.send(item));
+                self.send_fut = self.send.take().map(|ch| ch.send(item));
             }
         }
     }

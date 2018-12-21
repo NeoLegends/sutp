@@ -5,15 +5,12 @@ use byteorder::{NetworkEndian, WriteBytesExt};
 use bytes::{Buf, Bytes, IntoBuf};
 use std::{
     io::{self, Result, Write},
-    mem,
-    u16,
+    mem, u16,
 };
 
 /// A list of supported compression algorithms in order of preference.
-pub const SUPPORTED_COMPRESSION_ALGS: [CompressionAlgorithm; 2] = [
-    CompressionAlgorithm::Snappy,
-    CompressionAlgorithm::Gzip,
-];
+pub const SUPPORTED_COMPRESSION_ALGS: [CompressionAlgorithm; 2] =
+    [CompressionAlgorithm::Snappy, CompressionAlgorithm::Gzip];
 
 /// An SUTP chunk.
 #[derive(Clone, Debug, Hash, Eq, PartialEq)]
@@ -70,14 +67,17 @@ const BINARY_OVERHEAD: usize = 2 * U16_SIZE;
 impl Chunk {
     /// Calculates the length of the chunk in its binary serialized form.
     pub fn binary_len(&self) -> usize {
-        BINARY_OVERHEAD + (match self {
+        let payload_size = match self {
             Chunk::Abort | Chunk::Fin | Chunk::Syn => 0,
             Chunk::CompressionNegotiation(algs) => algs.len() * U32_SIZE,
-            Chunk::Unknown(_, data) | Chunk::Payload(data) =>
-                data.len() + Self::calculate_padding(data.len()),
+            Chunk::Unknown(_, data) | Chunk::Payload(data) => {
+                data.len() + Self::calculate_padding(data.len())
+            }
             Chunk::Sack(_, list) => U32_SIZE + list.len() * U32_SIZE,
             Chunk::SecurityFlag(_) => U32_SIZE,
-        })
+        };
+
+        payload_size + BINARY_OVERHEAD
     }
 
     /// Returns whether the chunk is an ABRT chunk.
@@ -195,14 +195,15 @@ impl Chunk {
     pub fn write_to(&self, w: &mut impl Write) -> Result<()> {
         let payload_length = match self {
             Chunk::Abort => Self::write_abrt(w),
-            Chunk::CompressionNegotiation(list) =>
-                Self::write_compression_negotiation(list, w),
+            Chunk::CompressionNegotiation(list) => {
+                Self::write_compression_negotiation(list, w)
+            }
             Chunk::Fin => Self::write_fin(w),
             Chunk::Payload(data) => Self::write_payload(data, w),
-            Chunk::Sack(ack_no, nak_list) =>
-                Self::write_sack(*ack_no, nak_list, w),
-            Chunk::SecurityFlag(is_insecure) =>
-                Self::write_security_flag(*is_insecure, w),
+            Chunk::Sack(ack_no, nak_list) => Self::write_sack(*ack_no, nak_list, w),
+            Chunk::SecurityFlag(is_insecure) => {
+                Self::write_security_flag(*is_insecure, w)
+            }
             Chunk::Syn => Self::write_syn(w),
             Chunk::Unknown(ty, data) => Self::write_unknown(*ty, data, w),
         }?;
@@ -256,11 +257,10 @@ impl Chunk {
     /// The implementation is based on read_unknown and just
     /// changes the type of the chunk that was read.
     fn read_payload(r: &mut Bytes) -> Result<(Self, usize)> {
-        Self::read_unknown(0, r)
-            .map(|(ch, len)| match ch {
-                Chunk::Unknown(_, data) => (Chunk::Payload(data), len),
-                _ => unreachable!("expected `Unknown` variant"),
-            })
+        Self::read_unknown(0, r).map(|(ch, len)| match ch {
+            Chunk::Unknown(_, data) => (Chunk::Payload(data), len),
+            _ => unreachable!("expected `Unknown` variant"),
+        })
     }
 
     /// Reads a SACK chunk.
@@ -463,8 +463,8 @@ impl From<CompressionAlgorithm> for u32 {
 
 #[cfg(test)]
 mod tests {
-    use std::io::Cursor;
     use super::*;
+    use std::io::Cursor;
 
     #[test]
     fn binary_len() {
@@ -489,11 +489,10 @@ mod tests {
     #[test]
     fn deserialize_compression_negotiation() {
         let mut data = vec![
-            0x0, 0xa0, 0x0, 0xc,
-            0x0, 0x0, 0x0, 0x1,
-            0x0, 0x0, 0x0, 0xa,
-            0x0, 0x0, 0x0, 0x4,
-        ].into();
+            0x0, 0xa0, 0x0, 0xc, 0x0, 0x0, 0x0, 0x1, 0x0, 0x0, 0x0, 0xa, 0x0, 0x0,
+            0x0, 0x4,
+        ]
+        .into();
 
         assert_eq!(
             Chunk::read_from(&mut data).unwrap().unwrap(),
@@ -520,10 +519,7 @@ mod tests {
         fn deserialize_flag_chunk(ty: u8, should: Chunk) {
             // Check the base case
             let mut data = vec![0x0, ty, 0x0, 0x0].into();
-            assert_eq!(
-                Chunk::read_from(&mut data).unwrap().unwrap(),
-                should,
-            );
+            assert_eq!(Chunk::read_from(&mut data).unwrap().unwrap(), should,);
 
             // Now check if we correctly parse (technically) incorrect lengths.
             // The following should all parse equivalent, since we're padding
@@ -535,10 +531,7 @@ mod tests {
                 vec![0x0, ty, 0x0, 0x4, 0x0, 0x0, 0x0, 0x0].into(),
             ];
             for mut cur in data.into_iter() {
-                assert_eq!(
-                    Chunk::read_from(&mut cur).unwrap().unwrap(),
-                    should,
-                );
+                assert_eq!(Chunk::read_from(&mut cur).unwrap().unwrap(), should,);
             }
         }
 
@@ -549,10 +542,7 @@ mod tests {
 
     #[test]
     fn deserialize_payload() {
-        let mut data = vec![
-            0x0, 0x0, 0x0, 0x4,
-            0x1, 0x2, 0x3, 0x4,
-        ].into();
+        let mut data = vec![0x0, 0x0, 0x0, 0x4, 0x1, 0x2, 0x3, 0x4].into();
 
         assert_eq!(
             Chunk::read_from(&mut data).unwrap().unwrap(),
@@ -573,11 +563,10 @@ mod tests {
     #[test]
     fn deserialize_sack_chunk() {
         let mut data = vec![
-            0x0, 0x4, 0x0, 0xc,
-            0x0, 0x0, 0x0, 0x4,
-            0x0, 0x0, 0x0, 0x6,
-            0x0, 0x0, 0x0, 0x5,
-        ].into();
+            0x0, 0x4, 0x0, 0xc, 0x0, 0x0, 0x0, 0x4, 0x0, 0x0, 0x0, 0x6, 0x0, 0x0,
+            0x0, 0x5,
+        ]
+        .into();
 
         let chunk = Chunk::read_from(&mut data).unwrap().unwrap();
         let expected = Chunk::Sack(4, vec![6, 5]);
@@ -603,10 +592,7 @@ mod tests {
 
     #[test]
     fn deserialize_sack_chunk_empty_nak_list() {
-        let mut data = vec![
-            0x0, 0x4, 0x0, 0x4,
-            0x0, 0x0, 0x0, 0x4,
-        ].into();
+        let mut data = vec![0x0, 0x4, 0x0, 0x4, 0x0, 0x0, 0x0, 0x4].into();
 
         let chunk = Chunk::read_from(&mut data).unwrap().unwrap();
         let expected = Chunk::Sack(4, Vec::new());
@@ -617,20 +603,15 @@ mod tests {
     #[test]
     fn serialize_compression_negotiation() {
         let mut buf = Vec::new();
-        let algorithms = vec![
-            CompressionAlgorithm::Snappy,
-            CompressionAlgorithm::Gzip,
-        ];
+        let algorithms =
+            vec![CompressionAlgorithm::Snappy, CompressionAlgorithm::Gzip];
 
         Chunk::CompressionNegotiation(algorithms)
             .write_to(&mut buf)
             .unwrap();
 
-        let expected = &[
-            0x0, 0xa0, 0x0, 0x8,
-            0x0, 0x0, 0x0, 0x4,
-            0x0, 0x0, 0x0, 0x1,
-        ];
+        let expected =
+            &[0x0, 0xa0, 0x0, 0x8, 0x0, 0x0, 0x0, 0x4, 0x0, 0x0, 0x0, 0x1];
         assert_eq!(&buf, expected);
     }
 
@@ -652,10 +633,7 @@ mod tests {
             let mut buf = Cursor::new(vec![]);
             ch.write_to(&mut buf).unwrap();
 
-            assert_eq!(
-                &buf.into_inner(),
-                &[0x0, expected_type, 0x0, 0x0],
-            );
+            assert_eq!(&buf.into_inner(), &[0x0, expected_type, 0x0, 0x0],);
         }
 
         serialize_flag_chunk(Chunk::Syn, 0x1);
@@ -668,14 +646,9 @@ mod tests {
         let mut buf = Vec::new();
         let payload = vec![0x0, 0x0, 0x1, 0x1].into();
 
-        Chunk::Payload(payload)
-            .write_to(&mut buf)
-            .unwrap();
+        Chunk::Payload(payload).write_to(&mut buf).unwrap();
 
-        let expected = &[
-            0x0, 0x0, 0x0, 0x4,
-            0x0, 0x0, 0x1, 0x1,
-        ];
+        let expected = &[0x0, 0x0, 0x0, 0x4, 0x0, 0x0, 0x1, 0x1];
         assert_eq!(&buf, expected);
     }
 
@@ -683,9 +656,7 @@ mod tests {
     fn serialize_payload_empty() {
         let mut buf = Vec::new();
 
-        Chunk::Payload(Bytes::new())
-            .write_to(&mut buf)
-            .unwrap();
+        Chunk::Payload(Bytes::new()).write_to(&mut buf).unwrap();
 
         let expected = &[0x0, 0x0, 0x0, 0x0];
         assert_eq!(&buf, expected);
@@ -699,11 +670,8 @@ mod tests {
         chunk.write_to(&mut buf).unwrap();
 
         let expected = &[
-            0x0, 0x4, 0x0, 0x10,
-            0x0, 0x0, 0x0, 0x4,
-            0x0, 0x0, 0x0, 0x5,
-            0x0, 0x0, 0x0, 0x6,
-            0x0, 0x0, 0x0, 0x7,
+            0x0, 0x4, 0x0, 0x10, 0x0, 0x0, 0x0, 0x4, 0x0, 0x0, 0x0, 0x5, 0x0, 0x0,
+            0x0, 0x6, 0x0, 0x0, 0x0, 0x7,
         ];
         assert_eq!(&buf, expected);
     }
@@ -715,10 +683,7 @@ mod tests {
         let mut buf = Vec::new();
         chunk.write_to(&mut buf).unwrap();
 
-        let expected = &[
-            0x0, 0x4, 0x0, 0x4,
-            0x0, 0x0, 0x0, 0x11,
-        ];
+        let expected = &[0x0, 0x4, 0x0, 0x4, 0x0, 0x0, 0x0, 0x11];
         assert_eq!(&buf, expected);
     }
 

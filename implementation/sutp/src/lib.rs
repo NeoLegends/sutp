@@ -1,7 +1,8 @@
 #![allow(dead_code)]
 
 // Macros need to lexically come before the rest to be usable
-#[macro_use] mod macros;
+#[macro_use]
+mod macros;
 
 mod accept;
 mod chunk;
@@ -19,10 +20,7 @@ pub use crate::{
     stream::SutpStream,
 };
 
-use std::{
-    time::Duration,
-    u16,
-};
+use std::{time::Duration, u16};
 
 /// Max size of a UDP datagram.
 const UDP_DGRAM_SIZE: usize = u16::MAX as usize;

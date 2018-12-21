@@ -78,7 +78,8 @@ impl<T, F> SparseBuffer<T, F> {
     /// Returns the amount of elements that can be `.pop()`ed without
     /// receiving `None`.
     pub fn available(&self) -> usize {
-        self.buf.iter()
+        self.buf
+            .iter()
             .cycle() // Ensure we wrap around at the end
             .skip(self.head) // Skip to the head
             .take(self.capacity()) // Ensure we're bounded
@@ -96,9 +97,7 @@ impl<T, F> SparseBuffer<T, F> {
     /// Note that the elements aren't necessarily `.pop()`able due to possible
     /// holes in the buffer.
     pub fn count(&self) -> usize {
-        self.buf.iter()
-            .filter(|slot| slot.is_some())
-            .count()
+        self.buf.iter().filter(|slot| slot.is_some()).count()
     }
 
     /// Resets the sparse buffer to its initial state.
@@ -129,7 +128,8 @@ impl<T, F: Fn(&T) -> usize> SparseBuffer<T, F> {
     /// current head without removing any of the elements.
     pub fn highest_consecutive_key(&self) -> Option<usize> {
         let mut last_some_slot = None;
-        self.buf.iter()
+        self.buf
+            .iter()
             .cycle() // Ensure we wrap around at the end
             .skip(self.head) // Skip to the head
             .take(self.capacity()) // Ensure we're bounded
@@ -293,10 +293,9 @@ impl<T> Display for InsertError<T> {
                 fmt,
                 "cannot insert element, the distance to the other elements is too large",
             ),
-            InsertError::KeyTooLow(_) => write!(
-                fmt,
-                "cannot insert element because the key is too low",
-            ),
+            InsertError::KeyTooLow(_) => {
+                write!(fmt, "cannot insert element because the key is too low",)
+            }
             InsertError::WouldOverwrite(_) => write!(
                 fmt,
                 "cannot insert element because it would overwrite another element",
@@ -361,7 +360,7 @@ mod tests {
         buf.push(3).unwrap();
         match buf.push(3) {
             Ok(_) => panic!("didn't get error"),
-            Err(InsertError::WouldOverwrite(_)) => {},
+            Err(InsertError::WouldOverwrite(_)) => {}
             Err(_) => panic!("did get wrong error"),
         }
     }
@@ -373,7 +372,7 @@ mod tests {
         buf.push(3).unwrap();
         match buf.push(100) {
             Ok(_) => panic!("didn't get error"),
-            Err(InsertError::DistanceTooLarge(_)) => {},
+            Err(InsertError::DistanceTooLarge(_)) => {}
             Err(_) => panic!("did get wrong error"),
         }
     }
@@ -441,7 +440,7 @@ mod tests {
         buf.push(3).unwrap();
         match buf.push(2) {
             Ok(_) => panic!("didn't get error"),
-            Err(InsertError::KeyTooLow(_)) => {},
+            Err(InsertError::KeyTooLow(_)) => {}
             Err(_) => panic!("did get wrong error"),
         }
     }

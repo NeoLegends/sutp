@@ -15,28 +15,37 @@ pub trait StreamExt {
     ///
     /// After dropping one half, the remaining `Branch` behaves similar
     /// to `.filter()` discarding items it's not supposed to let through.
-    fn branch<F>(self, filter: F)
-        -> (Branch<Self, Self::Item, F>, Branch<Self, Self::Item, F>)
-        where Self: Sized + Stream,
-              F: FnMut(&Self::Item) -> bool;
+    fn branch<F>(
+        self,
+        filter: F,
+    ) -> (Branch<Self, Self::Item, F>, Branch<Self, Self::Item, F>)
+    where
+        Self: Sized + Stream,
+        F: FnMut(&Self::Item) -> bool;
 
     /// Converts the stream to a graceful stream, that, instead
     /// of passing on an error, passes on a Result of the item and the
     /// error in the Ok case.
-    fn graceful(self) -> Graceful<Self> where Self: Sized;
+    fn graceful(self) -> Graceful<Self>
+    where
+        Self: Sized;
 }
 
 impl<T: Stream> StreamExt for T {
-    fn branch<F>(self, filter: F)
-        -> (Branch<Self, T::Item, F>, Branch<T, T::Item, F>)
-        where Self: Sized + Stream,
-              F: FnMut(&T::Item) -> bool
+    fn branch<F>(
+        self,
+        filter: F,
+    ) -> (Branch<Self, T::Item, F>, Branch<T, T::Item, F>)
+    where
+        Self: Sized + Stream,
+        F: FnMut(&T::Item) -> bool,
     {
         Branch::new(self, filter)
     }
 
     fn graceful(self) -> Graceful<Self>
-        where Self: Sized
+    where
+        Self: Sized,
     {
         Graceful::new(self)
     }

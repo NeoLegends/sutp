@@ -1,12 +1,7 @@
 //! Implements the background processor.
 
+use crate::{accept::Accept, segment::Segment, ResultExt, UDP_DGRAM_SIZE};
 use bytes::BytesMut;
-use crate::{
-    ResultExt,
-    UDP_DGRAM_SIZE,
-    accept::Accept,
-    segment::Segment,
-};
 use futures::{
     prelude::*,
     sink::Send,
@@ -14,15 +9,8 @@ use futures::{
     try_ready,
 };
 use log::{trace, warn};
-use std::{
-    collections::HashMap,
-    io,
-    net::SocketAddr,
-};
-use tokio::{
-    self,
-    net::udp::UdpSocket,
-};
+use std::{collections::HashMap, io, net::SocketAddr};
+use tokio::{self, net::udp::UdpSocket};
 
 /// The size of the queue for new connections.
 pub const NEW_CONN_QUEUE_SIZE: usize = 8;
@@ -91,7 +79,7 @@ impl Driver {
             new_conn: Some(new_conn),
             new_conn_fut: None,
             recv_buf: BytesMut::with_capacity(UDP_DGRAM_SIZE),
-            socket: socket,
+            socket,
         }
     }
 
@@ -116,15 +104,16 @@ impl Driver {
             new_conn: None,
             new_conn_fut: None,
             recv_buf: BytesMut::with_capacity(UDP_DGRAM_SIZE),
-            socket: socket,
+            socket,
         }
     }
 
     /// Asynchronously reads a segment off the UDP socket.
     ///
     /// The segment is also validated.
-    fn recv_segment(&mut self)
-        -> Poll<(Result<Segment, io::Error>, SocketAddr), io::Error> {
+    fn recv_segment(
+        &mut self,
+    ) -> Poll<(Result<Segment, io::Error>, SocketAddr), io::Error> {
         self.recv_buf.reserve(UDP_DGRAM_SIZE);
 
         // Unsafe because we're setting the length without any checks here. This
@@ -132,9 +121,8 @@ impl Driver {
         // socket will not attempt to read from the buffer, so it's not a big deal
         let (nread, addr) = unsafe {
             self.recv_buf.set_len(UDP_DGRAM_SIZE);
-            let (nread, addr) = try_ready!({
-                self.socket.poll_recv_from(self.recv_buf.as_mut())
-            });
+            let (nread, addr) =
+                try_ready!({ self.socket.poll_recv_from(self.recv_buf.as_mut()) });
             self.recv_buf.set_len(nread);
 
             (nread, addr)
@@ -147,9 +135,9 @@ impl Driver {
 
     /// Determines whether the driver can still perform work or should quit.
     fn should_quit(&self) -> bool {
-        self.new_conn.is_none() &&
-            self.new_conn_fut.is_none() &&
-            self.conn_map.is_empty()
+        self.new_conn.is_none()
+            && self.new_conn_fut.is_none()
+            && self.conn_map.is_empty()
     }
 }
 
@@ -159,7 +147,9 @@ impl Driver {
 /// to the listener and shuts down the driver.
 macro_rules! hard_io_err {
     ($this:ident, $err:expr) => {{
-        let _ = $this.io_err.take()
+        let _ = $this
+            .io_err
+            .take()
             .expect("polling after I/O error")
             .send($err);
 
@@ -197,7 +187,7 @@ impl Future for Driver {
                     Ok(Async::Ready(sender)) => self.new_conn = Some(sender),
                     Ok(Async::NotReady) => return Ok(Async::NotReady),
                     // Listener has been dropped, but some streams may still be alive
-                    Err(_) => {},
+                    Err(_) => {}
                 }
             }
             self.new_conn_fut = None;
@@ -216,13 +206,13 @@ impl Future for Driver {
                 // TODO: We'd actually would like to apply backpressure here, but
                 // not sure how without affecting all other connections as well.
                 match conn.try_send(maybe_segment) {
-                    Ok(_) => {},
+                    Ok(_) => {}
                     Err(ref e) if e.is_disconnected() => {
                         self.conn_map.remove(&addr);
-                    },
+                    }
                     Err(ref e) if e.is_full() => {
                         warn!("discarding segment due to overpressure");
-                    },
+                    }
                     Err(e) => unreachable!("unknown channel failure: {:?}", e),
                 }
             } else if let Some(new_conn) = self.new_conn.take() {
@@ -247,8 +237,8 @@ impl Future for Driver {
                 }
 
                 // Create sending socket and bind it to the remote address
-                let maybe_sock = UdpSocket::bind(&addr)
-                    .inspect_mut(|s| s.connect(&addr));
+                let maybe_sock =
+                    UdpSocket::bind(&addr).inspect_mut(|s| s.connect(&addr));
                 let sock = match maybe_sock {
                     Ok(sock) => sock,
                     Err(e) => hard_io_err!(self, e),
@@ -257,7 +247,8 @@ impl Future for Driver {
                 let (mut tx, rx) = mpsc::channel(STREAM_SEGMENT_QUEUE_SIZE);
 
                 // Queue initial segment for processing in the SutpStream
-                tx.try_send(Ok(segment)).expect("failed to queue initial segment");
+                tx.try_send(Ok(segment))
+                    .expect("failed to queue initial segment");
 
                 self.conn_map.insert(addr, tx);
 
