@@ -126,10 +126,7 @@ impl<T, F> SparseBuffer<T, F> {
     /// Panics if the sparse buffer is not empty when attempting to set the
     /// lowest key.
     pub fn set_lowest_key(&mut self, key: usize) {
-        assert!(
-            self.is_empty(),
-            "sparse buffer must be empty",
-        );
+        assert!(self.is_empty(), "sparse buffer must be empty");
 
         self.lowest_key = Some(key);
     }
