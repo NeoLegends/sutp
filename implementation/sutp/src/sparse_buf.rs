@@ -75,6 +75,19 @@ impl<T, F> SparseBuffer<T, F> {
         }
     }
 
+    /// Creates a new sparse buffer and sets the lowest key.
+    ///
+    /// Care must be taken that `key_fn` yields monotonically increasing keys.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the given capacity is 0.
+    pub fn with_lowest_key(capacity: usize, key_fn: F, lowest_key: usize) -> Self {
+        let mut buf = Self::new(capacity, key_fn);
+        buf.set_lowest_key(lowest_key);
+        buf
+    }
+
     /// Returns the amount of elements that can be `.pop()`ed without
     /// receiving `None`.
     pub fn available(&self) -> usize {
