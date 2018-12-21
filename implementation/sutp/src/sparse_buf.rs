@@ -461,6 +461,11 @@ mod tests {
 
         buf.set_lowest_key(17);
 
+        buf.push(17).unwrap();
+        assert_eq!(buf.pop(), Some(17));
+
+        buf.set_lowest_key(17);
+
         buf.push(19).unwrap();
         assert_eq!(buf.pop(), None);
 
