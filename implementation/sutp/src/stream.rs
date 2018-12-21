@@ -10,6 +10,7 @@ use futures::{prelude::*, sync::mpsc, try_ready};
 use std::{
     collections::{BTreeMap, BTreeSet},
     io::{self, Error, ErrorKind, Read, Write},
+    mem,
     net::SocketAddr,
     num::Wrapping,
 };
@@ -56,7 +57,7 @@ pub struct SutpStream {
     order_buf: SparseBuffer<Segment, &'static Fn(&Segment) -> usize>,
 
     /// Segments which have to be transferred and ACKed.
-    outgoing_segments: Option<BTreeMap<u32, Outgoing>>, // Option dance
+    outgoing_segments: BTreeMap<u32, Outgoing>,
 
     /// The read buffer to buffer successfully received and ordered segment
     /// data into.
@@ -173,7 +174,7 @@ impl SutpStream {
                 BUF_SIZE / OUTGOING_PAYLOAD_SIZE,
                 &order_key_selector,
             ),
-            outgoing_segments: Some(BTreeMap::new()),
+            outgoing_segments: BTreeMap::new(),
             r_buf: BytesMut::with_capacity(BUF_SIZE),
             recv,
             remote_seq_no,
@@ -267,18 +268,21 @@ impl SutpStream {
         for segment in self.order_buf.drain() {
             self.nak_set.remove(&segment.seq_no);
 
+            // We need to take ownership of our outgoing_segments map below, but
+            // this cannot be done in a mutable context. Thus, we temporarily
+            // replace the stored map with an empty one (this doesn't allocate!)
+            // to be able to do the filtering.
+            let segments =
+                mem::replace(&mut self.outgoing_segments, BTreeMap::new());
+
             // Remove ACKed segments from out outgoing list
-            self.outgoing_segments = self.outgoing_segments.take().map(|outgoing| {
-                outgoing
-                    .into_iter()
-                    .filter(|(seq_no, _)| !segment.ack(*seq_no).is_ack())
-                    .collect()
-            });
+            self.outgoing_segments = segments
+                .into_iter()
+                .filter(|(seq_no, _)| !segment.ack(*seq_no).is_ack())
+                .collect();
 
             // Trigger immediate re-send for all outgoing NAKed segments
             self.outgoing_segments
-                .as_mut()
-                .unwrap()
                 .iter_mut()
                 .filter(|(seq_no, _)| segment.ack(**seq_no).is_nak())
                 .for_each(|(_, outgoing)| outgoing.send_immediately());
@@ -328,7 +332,7 @@ impl SutpStream {
         // Gah I hate this style, but functional combinators don't allow
         // modifications to the control flow of this function and we need
         // those to handle erros and non-readyness.
-        for outgoing in self.outgoing_segments.as_mut().unwrap().values_mut() {
+        for outgoing in self.outgoing_segments.values_mut() {
             if !outgoing.should_send()? {
                 continue;
             }
@@ -393,8 +397,6 @@ impl SutpStream {
             };
 
             self.outgoing_segments
-                .as_mut()
-                .unwrap()
                 .insert(seq_no, Outgoing::new(serialized_segment));
         }
 
