@@ -3,8 +3,6 @@
 
 use byteorder::{ByteOrder, NetworkEndian, WriteBytesExt};
 use bytes::{Buf, Bytes, IntoBuf};
-//for test: segment_parsing_test()
-use bytes::BufMut;
 use crate::{
     ResultExt,
     chunk::{Chunk, CompressionAlgorithm},
