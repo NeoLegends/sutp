@@ -465,6 +465,46 @@ mod tests {
     }
 
     #[test]
+    fn deserialize_multiple() {
+        let segment = SegmentBuilder::new()
+            .seq_no(1)
+            .window_size(2)
+            .with_chunk(Chunk::Syn)
+            .with_chunk(Chunk::Abort)
+            .with_chunk(Chunk::Sack(4, vec![5, 6, 7]))
+            .with_chunk(Chunk::CompressionNegotiation(vec![
+                CompressionAlgorithm::Gzip,
+            ]))
+            .with_chunk(Chunk::Payload(Bytes::new()))
+            .with_chunk(Chunk::SecurityFlag(false))
+            .with_chunk(Chunk::Fin)
+            .build();
+
+        let mut buf = Vec::new();
+
+        segment.write_to_with_crc32(&mut buf).unwrap();
+        let written = buf.len();
+        assert!(written > 0);
+        segment.write_to_with_crc32(&mut buf).unwrap();
+
+        assert!(buf.len() > 0);
+
+        let mut part_a = Bytes::from(buf);
+
+        // Split the buffer because segment parsing reads until EOF
+        let mut part_b = part_a.split_off(written);
+
+        assert_eq!(
+            segment,
+            Segment::read_from_with_crc32(&mut part_a).unwrap(),
+        );
+        assert_eq!(
+            segment,
+            Segment::read_from_with_crc32(&mut part_b).unwrap(),
+        );
+    }
+
+    #[test]
     fn illegal_duplication_invalid() {
         let segment = SegmentBuilder::new()
             .seq_no(1)
