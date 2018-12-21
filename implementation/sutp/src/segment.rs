@@ -259,7 +259,12 @@ impl Segment {
             ));
         }
 
-        let segment = Self::read_from(r)?;
+        // Slice off the CRC sum at the end to avoid confusing the chunk parser,
+        // because it reads until the given buffer eaches EOF.
+        let mut subset_buf = r.slice_to(r.len() - U32_SIZE);
+        let segment = Self::read_from(&mut subset_buf)?;
+
+        r.advance(U32_SIZE);
         Ok(segment)
     }
 
