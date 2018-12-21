@@ -112,9 +112,26 @@ impl<T, F> SparseBuffer<T, F> {
 
     /// Checks whether the sparse buffer is empty.
     pub fn is_empty(&self) -> bool {
-        // If we have an element, the lowest key is set. We can "abuse" this
-        // to check whether the buffer is empty.
-        self.lowest_key.is_none()
+        self.lowest_key.is_none() || self.buf[self.head].is_none()
+    }
+
+    /// Sets the lowest (expected) key.
+    ///
+    /// This can be used to avoid situations in which the (by order of keys) second
+    /// element is inserted first and would otherwise prevent the insertion of the
+    /// actual first segment.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the sparse buffer is not empty when attempting to set the
+    /// lowest key.
+    pub fn set_lowest_key(&mut self, key: usize) {
+        assert!(
+            self.is_empty(),
+            "sparse buffer must be empty",
+        );
+
+        self.lowest_key = Some(key);
     }
 }
 
@@ -199,11 +216,8 @@ impl<T, F: Fn(&T) -> usize> SparseBuffer<T, F> {
 
         // TODO: What if `key` wraps around after reaching the max value?
 
-        let insert_pos = if !self.is_empty() {
-            // It is guaranteed that either the sparse buffer is empty or that
-            // the currently lowest key is stored within the buffer.
-
-            let checked_distance = key.checked_sub(self.lowest_key.unwrap());
+        let insert_pos = if let Some(lowest_key) = self.lowest_key {
+            let checked_distance = key.checked_sub(lowest_key);
 
             // Ensure the distance stays within valid bounds.
             //
@@ -218,15 +232,14 @@ impl<T, F: Fn(&T) -> usize> SparseBuffer<T, F> {
 
             distance_from_lowest.wrapping_add(self.head) % self.capacity()
         } else {
+            self.head = 0;
+            self.lowest_key = Some(key);
+
             0
         };
 
         if self.buf[insert_pos].is_some() {
             return Err(InsertError::WouldOverwrite(val));
-        }
-        if self.is_empty() {
-            self.head = insert_pos;
-            self.lowest_key = Some(key);
         }
 
         self.buf[insert_pos] = Some(val);
@@ -443,5 +456,37 @@ mod tests {
             Err(InsertError::KeyTooLow(_)) => {}
             Err(_) => panic!("did get wrong error"),
         }
+    }
+
+    #[test]
+    fn set_lowest_key() {
+        let mut buf = SparseBuffer::new(3, |v: &usize| *v);
+
+        buf.set_lowest_key(17);
+
+        buf.push(19).unwrap();
+        assert_eq!(buf.pop(), None);
+
+        buf.push(18).unwrap();
+        assert_eq!(buf.pop(), None);
+
+        buf.push(17).unwrap();
+        assert_eq!(buf.pop(), Some(17));
+        assert_eq!(buf.pop(), Some(18));
+        assert_eq!(buf.pop(), Some(19));
+
+        assert_eq!(buf.pop(), None);
+        assert!(buf.is_empty());
+
+        buf.push(3).unwrap();
+    }
+
+    #[test]
+    #[should_panic]
+    fn set_lowest_key_with_err() {
+        let mut buf = SparseBuffer::new(3, |v: &usize| *v);
+
+        buf.set_lowest_key(17);
+        buf.push(20).unwrap();
     }
 }
