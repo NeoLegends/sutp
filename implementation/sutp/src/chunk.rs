@@ -277,7 +277,7 @@ impl Chunk {
             .map(|_| buf.get_u32_be())
             .collect();
 
-        r.advance(U16_SIZE + len);    
+        r.advance(U16_SIZE + len);
 
         Ok((Chunk::Sack(ack_no, nak_list), len))
     }
