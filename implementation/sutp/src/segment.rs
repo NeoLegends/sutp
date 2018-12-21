@@ -494,8 +494,8 @@ mod tests {
         // Split the buffer because segment parsing reads until EOF
         let mut part_b = part_a.split_off(written);
 
-        assert_eq!(segment, Segment::read_from(&mut part_a).unwrap(),);
-        assert_eq!(segment, Segment::read_from(&mut part_b).unwrap(),);
+        assert_eq!(segment, Segment::read_from(&mut part_a).unwrap());
+        assert_eq!(segment, Segment::read_from(&mut part_b).unwrap());
     }
 
     #[test]
