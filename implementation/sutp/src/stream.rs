@@ -40,11 +40,14 @@ const MIN_OUTGOING_WINDOW_SIZE: usize = 128;
 /// A full-duplex SUTP stream.
 #[derive(Debug)]
 pub struct SutpStream {
-    /// The set of sequence numbers to ACK.
-    ack_set: SparseBuffer<u32, &'static Fn(&u32) -> usize>,
-
     /// The negotiated compression algorithm.
     compression_algorithm: Option<CompressionAlgorithm>,
+
+    /// The highest consecutively received sequence number.
+    ///
+    /// I. e., this is not the sequence number of the segment we expect next, but
+    /// the one we currently have.
+    highest_consecutive_remote_seq_no: Wrapping<u32>,
 
     /// The current local sequence number.
     local_seq_no: Wrapping<u32>,
@@ -65,9 +68,6 @@ pub struct SutpStream {
 
     /// A receiver with incoming segments.
     recv: mpsc::Receiver<Result<Segment, io::Error>>,
-
-    /// The current remote sequence number.
-    remote_seq_no: Wrapping<u32>,
 
     /// The last-known remaining window size.
     remote_window_size: u32,
@@ -139,6 +139,9 @@ impl SutpStream {
     ///
     /// This is the internally-used function to create an instance of the stream
     /// after either accepting or creating a new connection.
+    ///
+    /// The remote_seq_no is the highest consecutively received one, i. e. not the
+    /// one we expect next, but the one we currently have.
     pub(crate) fn create(
         recv: mpsc::Receiver<Result<Segment, Error>>,
         sock: UdpSocket,
@@ -147,15 +150,6 @@ impl SutpStream {
         remote_win_size: u32,
         compression_alg: Option<CompressionAlgorithm>,
     ) -> Self {
-        /// The function used as key selector of the sparse buffer storing the
-        /// ACKed sequence numbers.
-        ///
-        /// This needs to be a real function instead of a lambda to be 'static
-        /// (we pass a &'static of this function to the sparse buffer below).
-        fn ack_set_key_selector(seq_no: &u32) -> usize {
-            *seq_no as usize
-        }
-
         /// The function used as key selector of the sparse buffer storing the
         /// segments that have arrived.
         ///
@@ -166,18 +160,18 @@ impl SutpStream {
         }
 
         Self {
-            ack_set: SparseBuffer::new(1024, &ack_set_key_selector),
             compression_algorithm: compression_alg,
+            highest_consecutive_remote_seq_no: remote_seq_no,
             local_seq_no,
             nak_set: BTreeSet::new(),
-            order_buf: SparseBuffer::new(
+            order_buf: SparseBuffer::with_lowest_key(
                 BUF_SIZE / OUTGOING_PAYLOAD_SIZE,
                 &order_key_selector,
+                (remote_seq_no + ONE).0 as usize,
             ),
             outgoing_segments: BTreeMap::new(),
             r_buf: BytesMut::with_capacity(BUF_SIZE),
             recv,
-            remote_seq_no,
             remote_window_size: remote_win_size,
             segment_buf: BytesMut::with_capacity(BUF_SIZE),
             send_socket: sock,
@@ -209,7 +203,7 @@ impl SutpStream {
             _ => return Err(ErrorKind::NotConnected.into()),
         }
 
-        self.poll_recv()?;
+        self.poll_process()?;
 
         let copy_count = buf.len().min(self.r_buf.len());
         self.r_buf
@@ -221,8 +215,59 @@ impl SutpStream {
         Ok(Async::Ready(copy_count))
     }
 
-    /// Asynchronously receives and processes newly arriving segments.
-    fn poll_recv(&mut self) -> Result<(), io::Error> {
+    /// Asynchronously tries to write data to the stream.
+    ///
+    /// Note that until `.poll_flush()` is called, no data is actually written
+    /// to the network.
+    fn poll_write(&mut self, buf: &[u8]) -> Poll<usize, io::Error> {
+        self.assert_can_write()?;
+
+        if buf.is_empty() {
+            return Ok(Async::Ready(0));
+        } else if self.w_buf.remaining_mut() == 0 {
+            return Ok(Async::NotReady);
+        }
+
+        let copy_count = self.w_buf.remaining_mut().min(buf.len());
+        self.w_buf.put_slice(&buf[..copy_count]);
+
+        Ok(Async::Ready(copy_count))
+    }
+
+    /// Asynchronously tries to flush the stream, sending the data over the wire.
+    ///
+    /// This function does not wait for the sent segments to be acked.
+    fn poll_flush(&mut self) -> Poll<(), io::Error> {
+        self.assert_can_write()?;
+
+        self.prepare_segments();
+        self.poll_process()?;
+
+        // Gah I hate this style, but functional combinators don't allow
+        // modifications to the control flow of this function and we need
+        // those to handle erros and non-readyness.
+        for outgoing in self.outgoing_segments.values_mut() {
+            if !outgoing.should_send()? {
+                continue;
+            }
+            if (self.remote_window_size as usize) < outgoing.data.len() {
+                break;
+            }
+
+            try_ready!(self.send_socket.poll_send(&outgoing.data));
+
+            outgoing.start_timers();
+            self.remote_window_size
+                .saturating_sub(outgoing.data.len() as u32);
+        }
+
+        self.poll_process()?;
+        Ok(Async::Ready(()))
+    }
+
+    /// Asynchronously drives the protocol automaton receiving new segments,
+    /// ACKing received ones, etc.
+    fn poll_process(&mut self) -> Result<(), io::Error> {
         loop {
             // Check for new segments on the channel
             let poll_res = self
@@ -238,19 +283,6 @@ impl SutpStream {
                 Async::NotReady => break,
             };
 
-            // Store the sequence number in our ACK list. If that's full,
-            // insert it into our NAK set (this is unbounded at the moment).
-            match self.ack_set.push(segment.seq_no) {
-                Ok(_) => {}
-                Err(InsertError::DistanceTooLarge(_)) => {
-                    self.nak_set.insert(segment.seq_no);
-                }
-                Err(InsertError::KeyTooLow(_)) => continue,
-                Err(InsertError::WouldOverwrite(_)) => {
-                    self.nak_set.insert(segment.seq_no);
-                }
-            }
-
             // Store the segment itself for later removal. If the buffer is full,
             // at it to the NAK set.
             match self.order_buf.push(segment) {
@@ -265,7 +297,12 @@ impl SutpStream {
             }
         }
 
+        let mut highest_seq_no = None;
+
         for segment in self.order_buf.drain() {
+            highest_seq_no = Some(segment.seq_no);
+
+            // Remove segment from NAK list since it's been successfully received
             self.nak_set.remove(&segment.seq_no);
 
             // We need to take ownership of our outgoing_segments map below, but
@@ -298,57 +335,19 @@ impl SutpStream {
             }
         }
 
+        if let Some(seq_no) = highest_seq_no {
+            self.highest_consecutive_remote_seq_no = Wrapping(seq_no);
+
+            // Set the next expected sequence number in our sparse buffer to prevent
+            // data loss by segments arriving in the wrong order preventing earlier
+            // segments that have not yet been received to be inserted.
+            if self.order_buf.is_empty() {
+                self.order_buf
+                    .set_lowest_key(seq_no.wrapping_add(1) as usize)
+            }
+        }
+
         Ok(())
-    }
-
-    /// Asynchronously tries to write data to the stream.
-    ///
-    /// Note that until `.poll_flush()` is called, no data is actually written
-    /// to the network.
-    fn poll_write(&mut self, buf: &[u8]) -> Poll<usize, io::Error> {
-        self.assert_can_write()?;
-
-        if buf.is_empty() {
-            return Ok(Async::Ready(0));
-        } else if self.w_buf.remaining_mut() == 0 {
-            return Ok(Async::NotReady);
-        }
-
-        let copy_count = self.w_buf.remaining_mut().min(buf.len());
-        self.w_buf.put_slice(&buf[..copy_count]);
-
-        Ok(Async::Ready(copy_count))
-    }
-
-    /// Asynchronously tries to flush the stream, sending the data over the wire.
-    ///
-    /// This function does not wait for the sent segments to be acked.
-    fn poll_flush(&mut self) -> Poll<(), io::Error> {
-        self.assert_can_write()?;
-
-        self.prepare_segments();
-        self.poll_recv()?;
-
-        // Gah I hate this style, but functional combinators don't allow
-        // modifications to the control flow of this function and we need
-        // those to handle erros and non-readyness.
-        for outgoing in self.outgoing_segments.values_mut() {
-            if !outgoing.should_send()? {
-                continue;
-            }
-            if (self.remote_window_size as usize) < outgoing.data.len() {
-                break;
-            }
-
-            try_ready!(self.send_socket.poll_send(&outgoing.data));
-
-            outgoing.start_timers();
-            self.remote_window_size
-                .saturating_sub(outgoing.data.len() as u32);
-        }
-
-        self.poll_recv()?;
-        Ok(Async::Ready(()))
     }
 
     /// Creates segments of optimal size out of the buffer that contains
