@@ -231,7 +231,7 @@ impl Segment {
 
         let seq_no = buf.get_u32_be();
         let window_size = buf.get_u32_be();
-        
+
         r.advance(mem::size_of::<u32>() * 2);
 
         let mut chunk_list = Vec::new();
@@ -564,47 +564,22 @@ mod tests {
 
     #[test]
     fn segment_and_chunk_parsing_test() {
-        
-        let bytes1: Bytes = bytes::Bytes::new();
-        let bytes2: Bytes = bytes::Bytes::new();
-
-        let segment1 = SegmentBuilder::new()
+        let segment = SegmentBuilder::new()
             .seq_no(1)
             .window_size(2)
             .with_chunk(Chunk::Syn)
             .with_chunk(Chunk::Abort)
             .with_chunk(Chunk::Sack(4, vec![5,6,7]))
             .with_chunk(Chunk::CompressionNegotiation(vec![CompressionAlgorithm::Gzip]))
-            .with_chunk(Chunk::Payload(bytes1))
+            .with_chunk(Chunk::Payload(Bytes::new()))
             .with_chunk(Chunk::SecurityFlag(false))
             .with_chunk(Chunk::Fin)
             .build();
-        let segment2 = SegmentBuilder::new()
-            .seq_no(1)
-            .window_size(2)
-            .with_chunk(Chunk::Syn)
-            .with_chunk(Chunk::Abort)
-            .with_chunk(Chunk::Sack(4, vec![5,6,7]))
-            .with_chunk(Chunk::CompressionNegotiation(vec![CompressionAlgorithm::Gzip]))
-            .with_chunk(Chunk::Payload(bytes2))
-            .with_chunk(Chunk::SecurityFlag(false))
-            .with_chunk(Chunk::Fin)
-            .build();
-        
+        let mut serialized_segment = segment.to_vec().into();
 
-        let mut buf = bytes::BytesMut::new();
-
-        buf.reserve(segment1.binary_len());
-        segment1.write_to(&mut (&mut buf).writer())
-            .unwrap();
-        
-        let mut old_buf = buf.freeze();
-
-        let result = match Segment::read_from(&mut old_buf) {
-            Ok(segment3) => segment3,
-            _ =>  SegmentBuilder::new().build(),
-        };
-        assert_eq!(segment2, result);
+        assert_eq!(
+            segment,
+            Segment::read_from_with_crc32(&mut serialized_segment).unwrap(),
+        );
     }
-
 }
