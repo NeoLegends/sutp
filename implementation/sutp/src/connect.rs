@@ -5,7 +5,7 @@ use crate::{
     driver::{Driver, NEW_CONN_QUEUE_SIZE},
     segment::{Segment, SegmentBuilder},
     stream::SutpStream,
-    ResultExt, CONNECTION_TIMEOUT, RESPONSE_SEGMENT_TIMEOUT,
+    CONNECTION_TIMEOUT, RESPONSE_SEGMENT_TIMEOUT,
 };
 use bytes::Bytes;
 use futures::{
@@ -22,6 +22,7 @@ use std::{
 };
 use tokio::{clock, net::UdpSocket, timer::Delay};
 
+const DRIVER_AWAY: &str = "driver has gone away";
 const POLLED_TWICE: &str = "cannot poll Connect twice";
 
 lazy_static! {
@@ -57,7 +58,7 @@ struct Inner {
     io_err: Option<oneshot::Receiver<Error>>,
 
     /// A buffer containing the initial segment to be sent in binary form.
-    init_segment_buf: Vec<u8>,
+    init_segment_buf: Bytes,
 
     /// The local sequence number.
     local_seq_no: Wrapping<u32>,
@@ -156,7 +157,7 @@ impl Inner {
 
         Ok(Self {
             io_err: Some(err_rx),
-            init_segment_buf: initial_sgmt_buf,
+            init_segment_buf: initial_sgmt_buf.into(),
             local_seq_no: seq_no,
             recv: Some(from_driver_rx),
             remote_addr: *addr,
@@ -186,7 +187,7 @@ impl Inner {
         match self.io_err.as_mut().expect(POLLED_TWICE).poll() {
             Ok(Async::Ready(e)) => Err(e),
             Ok(Async::NotReady) => Ok(()),
-            Err(_) => panic!("driver has gone away"),
+            Err(_) => Err(Error::new(ErrorKind::Other, DRIVER_AWAY)),
         }
     }
 
@@ -203,7 +204,7 @@ impl Inner {
             .as_mut()
             .expect(POLLED_TWICE)
             .poll()
-            .expect("driver has gone away")
+            .expect(DRIVER_AWAY)
             .map(|maybe_segment| maybe_segment.expect("missing segment"));
         Ok(val)
     }
@@ -214,6 +215,25 @@ impl Inner {
             Ok(Async::Ready(_)) => Err(ErrorKind::TimedOut.into()),
             Ok(Async::NotReady) => Ok(()),
             Err(e) => Err(Error::new(ErrorKind::Other, e)),
+        }
+    }
+
+    /// Sends the initial segment to the driver.
+    fn poll_send(&mut self) -> Poll<(), Error> {
+        loop {
+            let poll_res = self
+                .send
+                .start_send((self.init_segment_buf.clone(), self.remote_addr))
+                .map_err(|_| Error::new(ErrorKind::Other, DRIVER_AWAY));
+
+            match poll_res? {
+                AsyncSink::Ready => return Ok(Async::Ready(())),
+                AsyncSink::NotReady(_) => try_ready!({
+                    self.send
+                        .poll_complete()
+                        .map_err(|_| Error::new(ErrorKind::Other, DRIVER_AWAY))
+                }),
+            }
         }
     }
 }
@@ -232,12 +252,7 @@ impl Future for Inner {
 
             match &mut self.state {
                 State::Start => {
-                    try_ready!({
-                        self.sock
-                            .as_mut()
-                            .expect(POLLED_TWICE)
-                            .poll_send(&self.init_segment_buf)
-                    });
+                    try_ready!(self.poll_send());
 
                     let timeout = clock::now() + RESPONSE_SEGMENT_TIMEOUT;
                     self.state = State::WaitingForResponse(Delay::new(timeout));
