@@ -212,22 +212,17 @@ impl Driver {
                 return Ok(Async::Ready(()));
             }
 
-            // Create sending socket and bind it to the remote address
-            let maybe_sock =
-                UdpSocket::bind(&addr).inspect_mut(|s| s.connect(&addr));
-            let sock = match maybe_sock {
-                Ok(sock) => sock,
-                Err(e) => hard_io_err!(self, e),
+            let rx = {
+                let (mut tx, rx) = mpsc::channel(STREAM_SEGMENT_QUEUE_SIZE);
+
+                // Queue initial segment for processing in the SutpStream
+                tx.try_send(Ok(segment))
+                    .expect("failed to queue initial segment");
+
+                self.conn_map.insert(addr, tx);
+
+                rx
             };
-
-            let (mut tx, rx) = mpsc::channel(STREAM_SEGMENT_QUEUE_SIZE);
-
-            // Queue initial segment for processing in the SutpStream
-            tx.try_send(Ok(segment))
-                .expect("failed to queue initial segment");
-
-            self.conn_map.insert(addr, tx);
-
             let segment_tx = self
                 .segment_tx
                 .as_ref()
