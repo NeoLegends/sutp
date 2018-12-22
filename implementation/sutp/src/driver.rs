@@ -1,6 +1,6 @@
 //! Implements the background processor.
 
-use crate::{accept::Accept, segment::Segment, ResultExt, UDP_DGRAM_SIZE};
+use crate::{accept::Accept, segment::Segment, UDP_DGRAM_SIZE};
 use bytes::{Bytes, BytesMut};
 use futures::{
     prelude::*,
