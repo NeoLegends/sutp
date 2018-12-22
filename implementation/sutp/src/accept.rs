@@ -25,7 +25,7 @@ const POLLED_TWICE: &str = "cannot poll Accept twice";
 #[must_use = "futures do nothing unless polled"]
 pub struct Accept {
     /// The segment, ACKing the first, in serialized form and its sequence number.
-    ack_segment: Option<Vec<u8>>,
+    ack_segment: Option<Bytes>,
 
     /// The timeout guarding the send / response of a single ACK response.
     ///
@@ -132,6 +132,27 @@ impl Accept {
         Ok(Async::Ready(()))
     }
 
+    /// Sends out the response.
+    fn poll_send(&mut self) -> Poll<(), Error> {
+        loop {
+            let buf = self.ack_segment.as_ref().unwrap().clone();
+
+            let poll_res = self
+                .send
+                .start_send((buf, self.remote_addr))
+                .map_err(|_| Error::new(ErrorKind::Other, DRIVER_AWAY));
+
+            match poll_res? {
+                AsyncSink::Ready => return Ok(Async::Ready(())),
+                AsyncSink::NotReady(_) => try_ready!({
+                    self.send
+                        .poll_complete()
+                        .map_err(|_| Error::new(ErrorKind::Other, DRIVER_AWAY))
+                }),
+            }
+        }
+    }
+
     /// Sets up the response segment ACKing the first.
     ///
     /// This is only done once, on the first poll of the future.
@@ -153,7 +174,7 @@ impl Accept {
             builder = builder.with_chunk(alg.into_chunk());
         }
 
-        self.ack_segment = Some(builder.build().to_vec());
+        self.ack_segment = Some(builder.build().to_vec().into());
         Ok(Async::Ready(()))
     }
 
@@ -177,7 +198,6 @@ impl Future for Accept {
                 try_ready!(self.poll_setup_response());
             }
 
-            let ack_segment_buf = self.ack_segment.clone().unwrap();
             let maybe_response = self.poll_segment()?;
 
             // See if the other side has answered
@@ -186,8 +206,7 @@ impl Future for Accept {
                 try_ready!(self.poll_segment_timeout());
 
                 // If not, send the segment and set a timeout when to try again
-                let sock = self.send_socket.as_mut().expect(POLLED_TWICE);
-                try_ready!(sock.poll_send(&ack_segment_buf));
+                try_ready!(self.poll_send());
 
                 self.set_segment_timeout();
                 return Ok(Async::NotReady);
