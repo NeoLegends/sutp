@@ -258,8 +258,25 @@ impl SutpStream {
                 break;
             }
 
-            // .clone() only clones the reference, not the data
-            try_ready!(self.send_to_driver(outgoing.data.clone()));
+            // Send the segment to the driver
+            loop {
+                let poll_res = self
+                    .send
+                    .start_send((outgoing.data.clone(), self.remote_addr))
+                    .map_err(|_| {
+                        Error::new(ErrorKind::Other, "driver has gone away")
+                    });
+
+                if poll_res?.is_ready() {
+                    break;
+                }
+
+                try_ready!({
+                    self.send.poll_complete().map_err(|_| {
+                        Error::new(ErrorKind::Other, "driver has gone away")
+                    })
+                });
+            }
 
             outgoing.start_timers();
             self.remote_window_size
@@ -407,25 +424,6 @@ impl SutpStream {
         // Since everything has been copied to segment_buf, this will reclaim
         // the entire buffer space without allocating.
         self.w_buf.reserve(BUF_SIZE);
-    }
-
-    /// Sends the given data over the channel to the driver.
-    fn send_to_driver(&mut self, data: Bytes) -> Poll<(), Error> {
-        loop {
-            let poll_res = self
-                .send
-                .start_send((data.clone(), self.remote_addr))
-                .map_err(|_| Error::new(ErrorKind::Other, "driver has gone away"));
-
-            match poll_res? {
-                AsyncSink::Ready => return Ok(Async::Ready(())),
-                AsyncSink::NotReady(_) => try_ready!({
-                    self.send.poll_complete().map_err(|_| {
-                        Error::new(ErrorKind::Other, "driver has gone away")
-                    })
-                }),
-            }
-        }
     }
 }
 
