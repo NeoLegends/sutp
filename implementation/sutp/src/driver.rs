@@ -47,6 +47,12 @@ pub struct Driver {
     /// from the map.
     conn_map: HashMap<SocketAddr, mpsc::Sender<Result<Segment, io::Error>>>,
 
+    /// The frame that is currently being sent.
+    ///
+    /// This is necessary because when receiving a segment from the sending channel,
+    /// the UDP socket may not be ready for sending it out.
+    currently_sending: Option<(Bytes, SocketAddr)>,
+
     /// A oneshot channel to notify the listener about I/O failures.
     ///
     /// SutpStream's get notified about I/O errors only indirectly, by dropping
@@ -103,6 +109,7 @@ impl Driver {
 
         Self {
             conn_map: HashMap::new(),
+            currently_sending: None,
             io_err: Some(io_err),
             new_conn: Some(new_conn),
             new_conn_fut: None,
@@ -131,6 +138,7 @@ impl Driver {
 
         Self {
             conn_map,
+            currently_sending: None,
             io_err: Some(io_err),
             new_conn: None,
             new_conn_fut: None,
@@ -240,32 +248,31 @@ impl Driver {
 
     /// Sends a single segment, if possible, over the wire.
     fn poll_send(&mut self) -> Poll<(), ()> {
-        match self.socket.poll_write_ready() {
+        // Store the channel result in the driver to care for the case where we
+        // receive an item over the channel but the socket isn't ready to send.
+        let (data, addr) = if let Some(data) = self.currently_sending.as_ref() {
+            data
+        } else {
+            let outgoing = match self.segment_rx.poll() {
+                Ok(Async::Ready(Some(item))) => item,
+                Ok(Async::Ready(None)) | Ok(Async::NotReady) => {
+                    return Ok(Async::NotReady)
+                }
+                Err(_) => unreachable!(), // Receiver::poll() never errors
+            };
+
+            self.currently_sending = Some(outgoing);
+            self.currently_sending.as_ref().unwrap()
+        };
+
+        match self.socket.poll_send_to(data, addr) {
             Ok(Async::Ready(_)) => {}
             Ok(Async::NotReady) => return Ok(Async::NotReady),
             Err(e) => hard_io_err!(self, e),
         }
 
-        let (data, addr) = try_ready!(self.recv_chan_segment());
-
-        match self.socket.poll_send_to(&data, &addr) {
-            Ok(Async::Ready(_)) => Ok(Async::Ready(())),
-            Ok(Async::NotReady) => {
-                unreachable!("udp socket not ready after polling for readyness")
-            }
-            Err(e) => hard_io_err!(self, e),
-        }
-    }
-
-    /// Receives a segment from the data channel.
-    fn recv_chan_segment(&mut self) -> Poll<(Bytes, SocketAddr), ()> {
-        match self.segment_rx.poll() {
-            Ok(Async::Ready(Some(item))) => Ok(Async::Ready(item)),
-            Ok(Async::Ready(None)) | Ok(Async::NotReady) => Ok(Async::NotReady),
-
-            // Receiver::poll() never errors
-            Err(_) => unreachable!(),
-        }
+        self.currently_sending = None;
+        Ok(Async::Ready(()))
     }
 
     /// Asynchronously reads a segment off the UDP socket.
