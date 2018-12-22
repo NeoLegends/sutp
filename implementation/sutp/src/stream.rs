@@ -411,17 +411,20 @@ impl SutpStream {
 
     /// Sends the given data over the channel to the driver.
     fn send_to_driver(&mut self, data: Bytes) -> Poll<(), Error> {
-        let poll_res = self
-            .send
-            .start_send((data, self.remote_addr))
-            .map_err(|_| Error::new(ErrorKind::Other, "driver has gone away"));
-
-        match poll_res? {
-            AsyncSink::Ready => Ok(Async::Ready(())),
-            AsyncSink::NotReady(_) => self
+        loop {
+            let poll_res = self
                 .send
-                .poll_complete()
-                .map_err(|_| Error::new(ErrorKind::Other, "driver has gone away")),
+                .start_send((data.clone(), self.remote_addr))
+                .map_err(|_| Error::new(ErrorKind::Other, "driver has gone away"));
+
+            match poll_res? {
+                AsyncSink::Ready => return Ok(Async::Ready(())),
+                AsyncSink::NotReady(_) => try_ready!({
+                    self.send.poll_complete().map_err(|_| {
+                        Error::new(ErrorKind::Other, "driver has gone away")
+                    })
+                }),
+            }
         }
     }
 }
