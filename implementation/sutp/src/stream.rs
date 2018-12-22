@@ -7,6 +7,7 @@ use crate::{
 };
 use bytes::{Buf, BufMut, Bytes, BytesMut, IntoBuf};
 use futures::{prelude::*, sync::mpsc, try_ready};
+use log::trace;
 use std::{
     collections::{BTreeMap, BTreeSet},
     io::{self, Error, ErrorKind, Read, Write},
@@ -288,20 +289,19 @@ impl SutpStream {
     }
 
     /// Asynchronously drives the protocol automaton receiving new segments,
-    /// ACKing received ones, etc.
+    /// preparing ACK segments for received ones, etc.
     fn poll_process(&mut self) -> Result<(), io::Error> {
         loop {
             // Check for new segments on the channel
-            let poll_res = self
-                .recv
-                .poll()
-                .map_err(|_| {
-                    io::Error::new(ErrorKind::Other, "driver has gone away")
-                })?
-                .map(|maybe| maybe.expect("missing segment"));
-            let segment = match poll_res {
-                Async::Ready(Ok(segment)) => segment,
-                Async::Ready(Err(_)) => continue,
+            let segment = match self.recv.poll().expect("mpsc::Receiver error") {
+                Async::Ready(Some(Ok(segment))) => segment,
+                Async::Ready(Some(Err(_))) => {
+                    trace!("received invalid segment");
+                    continue;
+                },
+                Async::Ready(None) => {
+                    return Err(Error::new(ErrorKind::Other, "driver has gone away"))
+                }
                 Async::NotReady => break,
             };
 
