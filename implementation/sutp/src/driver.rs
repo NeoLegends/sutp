@@ -325,6 +325,7 @@ impl Future for Driver {
                 return Ok(Async::Ready(()));
             }
 
+            // Poll until both return NotReady
             match (self.poll_recv()?, self.poll_send()?) {
                 (Async::NotReady, Async::NotReady) => return Ok(Async::NotReady),
                 _ => {}
