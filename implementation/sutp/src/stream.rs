@@ -298,7 +298,7 @@ impl SutpStream {
                 Async::Ready(Some(Err(_))) => {
                     trace!("received invalid segment");
                     continue;
-                },
+                }
                 Async::Ready(None) => {
                     return Err(Error::new(ErrorKind::Other, "driver has gone away"))
                 }
