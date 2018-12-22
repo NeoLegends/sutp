@@ -23,7 +23,7 @@ pub const NEW_CONN_QUEUE_SIZE: usize = 8;
 /// The size of a channel for newly arriving segments.
 const STREAM_SEGMENT_QUEUE_SIZE: usize = 8;
 
-/// The background worker behind an SUTP listener.
+/// The background worker behind SUTP listeners and streams.
 ///
 /// Due to the fact that UDP sockets use a datagram-stealing-technique when used
 /// with SO_REUSEPORT, we cannot create a separate UDP socket for each SUTP stream,
@@ -33,9 +33,11 @@ const STREAM_SEGMENT_QUEUE_SIZE: usize = 8;
 ///
 /// This is spawned onto an executor when a listener is bound. It is responsible
 /// for accepting new connections and distributing UDP datagrams to their target
-/// SUTP streams for further processing.
+/// SUTP streams for further processing as well as sending out any segments over
+/// the shared UDP socket.
 ///
-/// It stops working once the listener and every SUTP stream has been dropped.
+/// It stops working once the listener and every connected SUTP stream has been
+/// dropped.
 #[derive(Debug)]
 pub struct Driver {
     /// A map of open connections.
@@ -47,7 +49,7 @@ pub struct Driver {
     /// from the map.
     conn_map: HashMap<SocketAddr, mpsc::Sender<Result<Segment, io::Error>>>,
 
-    /// The frame that is currently being sent.
+    /// The segment that is currently being sent over the UDP socket.
     ///
     /// This is necessary because when receiving a segment from the sending channel,
     /// the UDP socket may not be ready for sending it out.
