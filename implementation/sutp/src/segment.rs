@@ -17,7 +17,7 @@ use std::{
 
 /// The overhead in bytes of serializing a single segment, besides the
 /// size of the chunks.
-const BINARY_OVERHEAD: usize = 12;
+const BINARY_OVERHEAD: usize = 12; // 64 bit header + 32 bit CRC
 
 /// Whether a segment is ACKed or NAKed or whether the status is unknown.
 #[derive(Clone, Copy, Debug, Hash, Eq, PartialEq)]
@@ -115,7 +115,7 @@ impl Segment {
     pub fn binary_len(&self) -> usize {
         let chunk_len: usize = self.chunks.iter().map(|ch| ch.binary_len()).sum();
 
-        chunk_len + BINARY_OVERHEAD // 64 bit header + 32 bit CRC
+        chunk_len + BINARY_OVERHEAD
     }
 
     /// Checks whether the segment can be classified as a "SYN->" or "SYN 1"
