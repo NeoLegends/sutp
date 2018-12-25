@@ -236,8 +236,8 @@ impl SutpStream {
     fn poll_flush(&mut self) -> Poll<(), io::Error> {
         self.assert_can_write()?;
 
-        self.prepare_segments();
         self.poll_process()?;
+        self.prepare_segments();
 
         // Gah I hate this style, but functional combinators don't allow
         // modifications to the control flow of this function and we need
