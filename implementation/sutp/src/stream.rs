@@ -168,7 +168,8 @@ impl SutpStream {
             recv,
             remote_addr,
             remote_window_size: remote_win_size,
-            segment_buf: BytesMut::with_capacity(BUF_SIZE),
+            // preallocation doesn't really matter here
+            segment_buf: BytesMut::new(),
             send,
             state: StreamState::Open,
             w_buf: BytesMut::with_capacity(BUF_SIZE),
