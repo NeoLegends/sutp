@@ -2,7 +2,7 @@ use crate::{
     chunk::{Chunk, CompressionAlgorithm},
     connect::Connect,
     segment::{Segment, SegmentBuilder},
-    sparse_buf::{InsertError, SparseBuffer},
+    window::{InsertError, Window},
     CONNECTION_TIMEOUT, RESPONSE_SEGMENT_TIMEOUT,
 };
 use bytes::{Buf, BufMut, Bytes, BytesMut, IntoBuf};
@@ -57,7 +57,7 @@ pub struct SutpStream {
     nak_set: BTreeSet<u32>,
 
     /// The sparse buffer for bringing segments into their proper order.
-    order_buf: SparseBuffer<Segment, &'static Fn(&Segment) -> usize>,
+    order_buf: Window<Segment, &'static Fn(&Segment) -> usize>,
 
     /// Segments which have to be transferred and ACKed.
     outgoing_segments: BTreeMap<u32, Outgoing>,
@@ -168,7 +168,7 @@ impl SutpStream {
             highest_consecutive_remote_seq_no: remote_seq_no,
             local_seq_no,
             nak_set: BTreeSet::new(),
-            order_buf: SparseBuffer::with_lowest_key(
+            order_buf: Window::with_lowest_key(
                 BUF_SIZE / OUTGOING_PAYLOAD_SIZE,
                 &order_key_selector,
                 (remote_seq_no + ONE).0 as usize,

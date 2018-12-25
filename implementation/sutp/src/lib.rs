@@ -10,8 +10,8 @@ mod connect;
 mod driver;
 mod listener;
 mod segment;
-mod sparse_buf;
 mod stream;
+mod window;
 
 pub use crate::{
     accept::Accept,

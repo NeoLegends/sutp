@@ -3,32 +3,32 @@ use std::{
     fmt::{Debug, Display, Formatter, Result as FmtResult},
 };
 
-/// A sparse, sorted ring-like buffer using a key function.
+/// A sorted sliding-window buffer using a key function.
 ///
-/// This buffer represents a sorted ring of slots that can be either filled or
-/// empty. When an element is inserted, its position is computed using an external
-/// comparator function. The function is allowed to return values of unbounded
-/// size, since the sparse buffer will make the indices relative to the lowest
-/// stored value.
+/// This buffer represents a sorted sliding window of slots that can be either
+/// filled or empty. When an element is inserted, its position is computed using
+/// an external comparator function. The function is allowed to return values of
+/// unbounded size, since the sliding window will make the indices relative to the
+/// lowest stored value.
 ///
-/// Values can only be removed from the "start" of the buffer in ascending position.
+/// Values can only be removed from the "start" of the window in ascending position.
 /// Additionally, values can only be removed until the first "hole" is reached.
 /// The hole needs to be filled before access to the other values is possible.
 #[derive(Clone, Eq, PartialEq)]
-pub struct SparseBuffer<T, F> {
+pub struct Window<T, F> {
     buf: Vec<Option<T>>,
     head: usize,
     key_fn: F,
     lowest_key: Option<usize>,
 }
 
-/// An iterator that repeatedly calls `.pop()` on the underlying sparse buffer.
+/// An iterator that repeatedly calls `.pop()` on the underlying sliding window.
 #[derive(Debug, Eq, PartialEq)]
 pub struct Drain<'a, T, F> {
-    buf: &'a mut SparseBuffer<T, F>,
+    buf: &'a mut Window<T, F>,
 }
 
-/// The error that can occur while inserting a value into the sparse buffer.
+/// The error that can occur while inserting a value into the sliding window.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum InsertError<T> {
     /// The element cannot be inserted because the distance to the other elements
@@ -38,9 +38,9 @@ pub enum InsertError<T> {
 
     /// The element cannot be inserted because the key as given by the key function
     /// would place the element before the current head. This is a violation of the
-    /// invariants of the sparse buffer.
+    /// invariants of the sliding window.
     ///
-    /// This can only occur if there are items in the sparse buffer. Inserting into
+    /// This can only occur if there are items in the sliding window. Inserting into
     /// an empty buffer will never throw this kind of error.
     KeyTooLow(T),
 
@@ -48,8 +48,8 @@ pub enum InsertError<T> {
     WouldOverwrite(T),
 }
 
-impl<T, F> SparseBuffer<T, F> {
-    /// Creates a new sparse buffer.
+impl<T, F> Window<T, F> {
+    /// Creates a new sliding window.
     ///
     /// Care must be taken that `key_fn` yields monotonically increasing keys.
     ///
@@ -67,7 +67,7 @@ impl<T, F> SparseBuffer<T, F> {
             vec.push(None);
         }
 
-        Self {
+        Window {
             buf: vec,
             head: 0,
             key_fn,
@@ -75,7 +75,7 @@ impl<T, F> SparseBuffer<T, F> {
         }
     }
 
-    /// Creates a new sparse buffer and sets the lowest key.
+    /// Creates a new sliding window and sets the lowest key.
     ///
     /// Care must be taken that `key_fn` yields monotonically increasing keys.
     ///
@@ -113,7 +113,7 @@ impl<T, F> SparseBuffer<T, F> {
         self.buf.iter().filter(|slot| slot.is_some()).count()
     }
 
-    /// Resets the sparse buffer to its initial state.
+    /// Resets the sliding window to its initial state.
     pub fn clear(&mut self) {
         for it in &mut self.buf {
             *it = None;
@@ -123,7 +123,7 @@ impl<T, F> SparseBuffer<T, F> {
         self.head = 0;
     }
 
-    /// Checks whether the sparse buffer is empty.
+    /// Checks whether the sliding window is empty.
     pub fn is_empty(&self) -> bool {
         self.lowest_key.is_none() || self.buf[self.head].is_none()
     }
@@ -136,16 +136,16 @@ impl<T, F> SparseBuffer<T, F> {
     ///
     /// # Panics
     ///
-    /// Panics if the sparse buffer is not empty when attempting to set the
+    /// Panics if the sliding window is not empty when attempting to set the
     /// lowest key.
     pub fn set_lowest_key(&mut self, key: usize) {
-        assert!(self.is_empty(), "sparse buffer must be empty");
+        assert!(self.is_empty(), "sliding window must be empty");
 
         self.lowest_key = Some(key);
     }
 }
 
-impl<T, F: Fn(&T) -> usize> SparseBuffer<T, F> {
+impl<T, F: Fn(&T) -> usize> Window<T, F> {
     /// Obtains a draining iterator that repeatedly calls `.pop()`.
     pub fn drain(&mut self) -> Drain<'_, T, F> {
         Drain { buf: self }
@@ -173,13 +173,13 @@ impl<T, F: Fn(&T) -> usize> SparseBuffer<T, F> {
         last_some_slot.map(|slot_val| (self.key_fn)(slot_val))
     }
 
-    /// Returns a reference to the smallest element in the sparse buffer without
+    /// Returns a reference to the smallest element in the sliding window without
     /// removing it from the buffer.
     pub fn peek(&self) -> Option<&T> {
         self.buf[self.head].as_ref()
     }
 
-    /// Attempts to remove the "smallest" item from the sparse buffer.
+    /// Attempts to remove the "smallest" item from the sliding window.
     ///
     /// Returns `None` if the buffer is empty or if there is a hole at the current
     /// position.
@@ -218,7 +218,7 @@ impl<T, F: Fn(&T) -> usize> SparseBuffer<T, F> {
         element
     }
 
-    /// Inserts an element into the sparse buffer.
+    /// Inserts an element into the sliding window.
     ///
     /// This operation is `O(1)`.
     pub fn push(&mut self, val: T) -> Result<(), InsertError<T>> {
@@ -257,9 +257,9 @@ impl<T, F: Fn(&T) -> usize> SparseBuffer<T, F> {
     }
 }
 
-impl<T: Debug, F> Debug for SparseBuffer<T, F> {
+impl<T: Debug, F> Debug for Window<T, F> {
     fn fmt(&self, f: &mut Formatter) -> FmtResult {
-        f.debug_struct(stringify!(SparseBuffer<T, F>))
+        f.debug_struct(stringify!(Window<T, F>))
             .field("buf", &self.buf)
             .field("head", &self.head)
             .field("key_fn", &"...")
@@ -335,7 +335,7 @@ mod tests {
 
     #[test]
     fn available() {
-        let mut buf = SparseBuffer::new(3, |v: &usize| *v);
+        let mut buf = Window::new(3, |v: &usize| *v);
 
         assert!(buf.is_empty());
 
@@ -359,7 +359,7 @@ mod tests {
 
     #[test]
     fn smoke() {
-        let mut buf = SparseBuffer::new(3, |v: &usize| *v);
+        let mut buf = Window::new(3, |v: &usize| *v);
 
         assert!(buf.is_empty());
 
@@ -378,7 +378,7 @@ mod tests {
 
     #[test]
     fn cannot_overwrite() {
-        let mut buf = SparseBuffer::new(3, |v: &usize| *v);
+        let mut buf = Window::new(3, |v: &usize| *v);
 
         buf.push(3).unwrap();
         match buf.push(3) {
@@ -390,7 +390,7 @@ mod tests {
 
     #[test]
     fn distance_too_large() {
-        let mut buf = SparseBuffer::new(3, |v: &usize| *v);
+        let mut buf = Window::new(3, |v: &usize| *v);
 
         buf.push(3).unwrap();
         match buf.push(100) {
@@ -402,7 +402,7 @@ mod tests {
 
     #[test]
     fn drain_hole() {
-        let mut buf = SparseBuffer::new(3, |v: &usize| *v);
+        let mut buf = Window::new(3, |v: &usize| *v);
 
         assert!(buf.is_empty());
 
@@ -425,7 +425,7 @@ mod tests {
 
     #[test]
     fn drain_and_fill() {
-        let mut buf = SparseBuffer::new(5, |v: &usize| *v);
+        let mut buf = Window::new(5, |v: &usize| *v);
 
         for i in 0..100 {
             assert!(buf.is_empty());
@@ -446,7 +446,7 @@ mod tests {
 
     #[test]
     fn highest_consecutive_key() {
-        let mut buf = SparseBuffer::new(3, |v: &usize| *v);
+        let mut buf = Window::new(3, |v: &usize| *v);
 
         buf.push(3).unwrap();
         assert_eq!(buf.highest_consecutive_key(), Some(3));
@@ -458,7 +458,7 @@ mod tests {
 
     #[test]
     fn key_too_low() {
-        let mut buf = SparseBuffer::new(3, |v: &usize| *v);
+        let mut buf = Window::new(3, |v: &usize| *v);
 
         buf.push(3).unwrap();
         match buf.push(2) {
@@ -470,7 +470,7 @@ mod tests {
 
     #[test]
     fn set_lowest_key() {
-        let mut buf = SparseBuffer::new(3, |v: &usize| *v);
+        let mut buf = Window::new(3, |v: &usize| *v);
 
         buf.set_lowest_key(17);
 
@@ -499,7 +499,7 @@ mod tests {
     #[test]
     #[should_panic]
     fn set_lowest_key_with_err() {
-        let mut buf = SparseBuffer::new(3, |v: &usize| *v);
+        let mut buf = Window::new(3, |v: &usize| *v);
 
         buf.set_lowest_key(17);
         buf.push(20).unwrap();
