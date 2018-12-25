@@ -351,6 +351,18 @@ mod tests {
     }
 
     #[test]
+    fn clear() {
+        let mut buf = Window::new(5);
+
+        buf.insert(1, 2).unwrap();
+        buf.insert(2, 3).unwrap();
+
+        buf.clear();
+
+        assert_eq!(buf, Window::new(5));
+    }
+
+    #[test]
     fn distance_too_large() {
         let mut buf = Window::new(3);
 
