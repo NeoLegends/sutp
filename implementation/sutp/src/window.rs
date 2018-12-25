@@ -104,6 +104,7 @@ impl<T> Window<T> {
     /// Note that the elements aren't necessarily `.pop()`able due to possible
     /// holes in the buffer.
     pub fn count(&self) -> usize {
+        // Can we get this down to `O(1)`?
         self.buf.iter().filter(|slot| slot.is_some()).count()
     }
 
