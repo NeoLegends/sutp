@@ -57,7 +57,7 @@ pub struct SutpStream {
     nak_set: BTreeSet<u32>,
 
     /// The sparse buffer for bringing segments into their proper order.
-    order_buf: Window<Segment, &'static Fn(&Segment) -> usize>,
+    order_buf: Window<Segment>,
 
     /// Segments which have to be transferred and ACKed.
     outgoing_segments: BTreeMap<u32, Outgoing>,
@@ -154,15 +154,6 @@ impl SutpStream {
         remote_win_size: u32,
         compression_alg: Option<CompressionAlgorithm>,
     ) -> Self {
-        /// The function used as key selector of the sparse buffer storing the
-        /// segments that have arrived.
-        ///
-        /// This needs to be a real function instead of a lambda to be 'static
-        /// (we pass a &'static of this function to the sparse buffer below).
-        fn order_key_selector(s: &Segment) -> usize {
-            s.seq_no as usize
-        }
-
         Self {
             compression_algorithm: compression_alg,
             highest_consecutive_remote_seq_no: remote_seq_no,
@@ -170,7 +161,6 @@ impl SutpStream {
             nak_set: BTreeSet::new(),
             order_buf: Window::with_lowest_key(
                 BUF_SIZE / OUTGOING_PAYLOAD_SIZE,
-                &order_key_selector,
                 (remote_seq_no + ONE).0 as usize,
             ),
             outgoing_segments: BTreeMap::new(),
@@ -307,7 +297,7 @@ impl SutpStream {
 
             // Store the segment itself for later removal. If the buffer is full,
             // at it to the NAK set.
-            match self.order_buf.push(segment) {
+            match self.order_buf.insert(segment.seq_no as usize, segment) {
                 Ok(_) => {}
                 Err(InsertError::DistanceTooLarge(s)) => {
                     self.nak_set.insert(s.seq_no);
