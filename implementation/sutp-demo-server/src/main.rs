@@ -7,14 +7,24 @@ fn main() {
     let fut = SutpListener::bind(&addr)
         .unwrap()
         .incoming()
-        .map(|(conn, _)| conn)
-        .buffer_unordered(10)
-        .and_then(|stream| read_to_end(stream, Vec::new()))
-        .for_each(|(_, buf)| {
-            println!("{}", String::from_utf8_lossy(&buf));
+        .map_err(|e| panic!("accept error: {}", e))
+        .for_each(|(conn, addr)| {
+            println!("Handling conn from {}", addr);
+
+            let fut = conn
+                .and_then(|stream| read_to_end(stream, Vec::new()))
+                .and_then(|(_, buf)| {
+                    println!("received: {}", String::from_utf8_lossy(&buf));
+                    Ok(())
+                })
+                .or_else(|e| {
+                    eprintln!("stream err: {:?}", e);
+                    Ok(())
+                });
+
+            tokio::spawn(fut);
             Ok(())
-        })
-        .map_err(|e| panic!("err: {:?}", e));
+        });
 
     tokio::run(fut);
 }
