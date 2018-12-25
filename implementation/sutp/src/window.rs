@@ -141,6 +141,8 @@ impl<T> Window<T> {
 
 impl<T> Window<T> {
     /// Obtains a draining iterator that repeatedly calls `.pop()`.
+    ///
+    /// The iterator will remove all elements up to the first hole (if any).
     pub fn drain(&mut self) -> Drain<'_, T> {
         Drain { buf: self }
     }
