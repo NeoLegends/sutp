@@ -52,15 +52,15 @@ impl<T> Window<T> {
     ///
     /// # Panics
     ///
-    /// Panics if the given capacity is 0.
-    pub fn new(capacity: usize) -> Self {
-        assert!(capacity > 0);
+    /// Panics if the given size is 0.
+    pub fn new(size: usize) -> Self {
+        assert!(size > 0);
 
         // Can't use the vec![None, capacity]-macro here, because while `None`
         // itself would be copyable, `Option<T>` is not, and that's what the
         // compiler sees.
-        let mut vec = Vec::with_capacity(capacity);
-        for _ in 0..capacity {
+        let mut vec = Vec::with_capacity(size);
+        for _ in 0..size {
             vec.push(None);
         }
 
@@ -75,9 +75,9 @@ impl<T> Window<T> {
     ///
     /// # Panics
     ///
-    /// Panics if the given capacity is 0.
-    pub fn with_lowest_key(capacity: usize, lowest_key: usize) -> Self {
-        let mut buf = Self::new(capacity);
+    /// Panics if the given size is 0.
+    pub fn with_lowest_key(size: usize, lowest_key: usize) -> Self {
+        let mut buf = Self::new(size);
         buf.set_lowest_key(lowest_key);
         buf
     }
