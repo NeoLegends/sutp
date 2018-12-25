@@ -417,14 +417,14 @@ impl SutpStream {
 
     /// Serializes the given segment and enqueues it for sending.
     fn enqueue_outgoing(&mut self, segment: Segment) {
-        let serialized_segment = {
-            self.segment_buf.reserve(segment.binary_len());
-            segment
-                .write_to(&mut (&mut self.segment_buf).writer())
-                .unwrap(); // since we're writing to memory this is infallible
+        self.segment_buf.reserve(segment.binary_len());
 
-            self.segment_buf.split_to(self.segment_buf.len()).freeze()
-        };
+        segment
+            .write_to(&mut (&mut self.segment_buf).writer())
+            .unwrap(); // since we're writing to memory this is infallible
+
+        let serialized_segment =
+            self.segment_buf.split_to(self.segment_buf.len()).freeze();
 
         self.outgoing_segments
             .insert(segment.seq_no, Outgoing::new(serialized_segment));
