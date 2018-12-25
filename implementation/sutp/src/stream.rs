@@ -286,8 +286,8 @@ impl SutpStream {
             // Check for new segments on the channel
             let segment = match self.recv.poll().expect("mpsc::Receiver error") {
                 Async::Ready(Some(Ok(segment))) => segment,
-                Async::Ready(Some(Err(_))) => {
-                    trace!("received invalid segment");
+                Async::Ready(Some(Err(e))) => {
+                    trace!("received invalid segment {:?}", e);
                     continue;
                 }
                 Async::Ready(None) => {
