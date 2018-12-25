@@ -205,7 +205,7 @@ impl<T> Window<T> {
         // Advance the head if we have actually removed something from the
         // vector and don't skip past holes.
         self.head = if element.is_some() {
-            (self.head + 1) % self.capacity()
+            self.head.wrapping_add(1) % self.capacity()
         } else {
             self.head
         };
