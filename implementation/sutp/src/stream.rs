@@ -373,10 +373,6 @@ impl SutpStream {
             let num_payload_bytes = self.w_buf.len().min(OUTGOING_PAYLOAD_SIZE);
             let payload = self.w_buf.split_to(num_payload_bytes);
 
-            // Get a fresh sequence number and reduce our window size appropriately
-            let seq_no = self.get_seq_no();
-            let win_size = self.w_buf.remaining_mut();
-
             // Right now, creating the binary segment is implemented inefficiently.
             // We first copy the slice to be sent to our buffer (in poll_read),
             // split it off here, pass it as owned Bytes to the payload chunk, and
@@ -393,27 +389,44 @@ impl SutpStream {
 
             // Build the segment
             let segment = SegmentBuilder::new()
-                .seq_no(seq_no)
-                .window_size(win_size as u32)
+                .seq_no(self.get_seq_no())
+                .window_size(self.w_buf.remaining_mut() as u32)
                 .with_chunk(Chunk::Payload(payload.freeze()))
                 .build();
 
-            let serialized_segment = {
-                self.segment_buf.reserve(segment.binary_len());
-                segment
-                    .write_to(&mut (&mut self.segment_buf).writer())
-                    .unwrap(); // since we're writing to memory this is infallible
-
-                self.segment_buf.split_to(self.segment_buf.len()).freeze()
-            };
-
-            self.outgoing_segments
-                .insert(seq_no, Outgoing::new(serialized_segment));
+            self.enqueue_outgoing(segment);
         }
 
         // Since everything has been copied to segment_buf, this will reclaim
         // the entire buffer space without allocating.
         self.w_buf.reserve(BUF_SIZE);
+
+        // Build up an ACK / NAK segment
+        let nak_list = self.nak_set.iter().cloned().collect();
+        let ack_nak_segment = SegmentBuilder::new()
+            .seq_no(self.get_seq_no())
+            .window_size(self.w_buf.remaining_mut() as u32)
+            .with_chunk(Chunk::Sack(
+                self.highest_consecutive_remote_seq_no.0,
+                nak_list,
+            ))
+            .build();
+        self.enqueue_outgoing(ack_nak_segment);
+    }
+
+    /// Serializes the given segment and enqueues it for sending.
+    fn enqueue_outgoing(&mut self, segment: Segment) {
+        let serialized_segment = {
+            self.segment_buf.reserve(segment.binary_len());
+            segment
+                .write_to(&mut (&mut self.segment_buf).writer())
+                .unwrap(); // since we're writing to memory this is infallible
+
+            self.segment_buf.split_to(self.segment_buf.len()).freeze()
+        };
+
+        self.outgoing_segments
+            .insert(segment.seq_no, Outgoing::new(serialized_segment));
     }
 }
 
