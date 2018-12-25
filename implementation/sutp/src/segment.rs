@@ -118,6 +118,11 @@ impl Segment {
         chunk_len + BINARY_OVERHEAD
     }
 
+    /// Determines if the segment contains just SACK chunks.
+    pub fn is_just_sack(&self) -> bool {
+        self.chunks.iter().all(|ch| ch.is_sack())
+    }
+
     /// Checks whether the segment can be classified as a "SYN->" or "SYN 1"
     /// segment. That is, the very first segment on the wire used to intiate
     /// a connection.
