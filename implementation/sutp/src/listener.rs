@@ -10,6 +10,9 @@ use futures::{
 use std::{io, net::SocketAddr};
 use tokio::{self, net::udp::UdpSocket};
 
+/// The panic message when polling after an I/O error has occured.
+const POLL_AFTER_IO_ERR: &str = "cannot poll after an I/O error";
+
 /// A stream of incoming SUTP connections.
 #[derive(Debug)]
 #[must_use = "streams do nothing unless polled"]
@@ -102,23 +105,24 @@ impl SutpListener {
         match self
             .conn_recv
             .poll()
-            .expect("cannot poll after an IO error")
+            .expect("mpsc::Receiver error")
         {
             // We're given IO errors as channel items
             Async::Ready(Some(conn)) => Ok(Async::Ready(conn)),
-            _ => Ok(Async::NotReady),
+            Async::Ready(None) => panic!(POLL_AFTER_IO_ERR),
+            Async::NotReady => Ok(Async::NotReady),
         }
     }
 
     /// Checks if the driver reported hard I/O errors.
     fn poll_io_err(&mut self) -> Result<(), io::Error> {
-        match self.io_err.poll() {
-            Ok(Async::Ready(err)) => Err(err),
-            Ok(Async::NotReady) => Ok(()),
-            Err(_) => panic!("driver has gone away"),
+        match self.io_err.poll().expect(POLL_AFTER_IO_ERR) {
+            Async::Ready(err) => Err(err),
+            Async::NotReady => Ok(()),
         }
     }
 
+    /// Spawns the associated driver, if present, onto the tokio runtime.
     fn spawn_driver(&mut self) {
         if let Some(d) = self.driver.take() {
             tokio::spawn(d);
