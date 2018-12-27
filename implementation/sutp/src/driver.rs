@@ -12,6 +12,23 @@ use log::{trace, warn};
 use std::{collections::HashMap, io, net::SocketAddr};
 use tokio::{self, net::udp::UdpSocket};
 
+/// DRY-macro for hard I/O errors within the driver.
+///
+/// Attempts to send the error via the contained io_err channel
+/// to the listener and shuts down the driver.
+macro_rules! hard_io_err {
+    ($this:ident, $err:expr) => {{
+        let _ = $this
+            .io_err
+            .take()
+            .expect("polling after I/O error")
+            .send($err);
+
+        // Shutdown the driver by completing the future
+        return Err(());
+    }};
+}
+
 /// The size of the queue for new connections.
 pub const NEW_CONN_QUEUE_SIZE: usize = 8;
 
@@ -92,23 +109,6 @@ pub struct Driver {
 
     /// The actual UDP socket.
     socket: UdpSocket,
-}
-
-/// DRY-macro for hard I/O errors within the driver.
-///
-/// Attempts to send the error via the contained io_err channel
-/// to the listener and shuts down the driver.
-macro_rules! hard_io_err {
-    ($this:ident, $err:expr) => {{
-        let _ = $this
-            .io_err
-            .take()
-            .expect("polling after I/O error")
-            .send($err);
-
-        // Shutdown the driver by completing the future
-        return Err(());
-    }};
 }
 
 impl Driver {
