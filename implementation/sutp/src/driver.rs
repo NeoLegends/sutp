@@ -178,6 +178,8 @@ impl Driver {
         };
 
         if let Some(conn) = self.conn_map.get_mut(&addr) {
+            trace!("serving existing conn from {}", addr);
+
             // We have a connection which we need to forward the segment
             // parsing result to.
 
@@ -194,6 +196,8 @@ impl Driver {
                 Err(e) => unreachable!("unknown channel failure: {:?}", e),
             }
         } else if let Some(new_conn) = self.new_conn.take() {
+            trace!("setting up new conn to {}", addr);
+
             // We need to check whether the given segment is a SYN-> segment
             // and actually initialize the new connection.
 
@@ -214,7 +218,7 @@ impl Driver {
                 return Ok(Async::Ready(()));
             }
 
-            let rx = {
+            let segment_rx = {
                 let (mut tx, rx) = mpsc::channel(STREAM_SEGMENT_QUEUE_SIZE);
 
                 // Queue initial segment for processing in the SutpStream
@@ -230,7 +234,10 @@ impl Driver {
                 .as_ref()
                 .cloned()
                 .expect("missing segment tx");
-            let stream = Accept::from_listener(addr, rx, segment_tx);
+
+            trace!("setting up accept future");
+
+            let stream = Accept::from_listener(addr, segment_rx, segment_tx);
             self.new_conn_fut = Some(new_conn.send((stream, addr)));
         } else {
             // The segment is invalid and we don't know where it's coming from,

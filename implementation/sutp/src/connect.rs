@@ -14,6 +14,7 @@ use futures::{
     try_ready,
 };
 use lazy_static::lazy_static;
+use log::trace;
 use rand;
 use std::{
     io::{Error, ErrorKind},
@@ -271,7 +272,12 @@ impl Future for Inner {
                     // Check if the segment is valid and ACKs our first one
                     let response = match try_ready!(self.poll_segment()) {
                         Ok(sgmt) => sgmt,
-                        Err(_) => {
+                        Err(e) => {
+                            trace!(
+                                "received invalid segment during connection: {:?}",
+                                e
+                            );
+
                             self.state = State::Start;
                             continue;
                         }
@@ -281,15 +287,41 @@ impl Future for Inner {
                         continue;
                     }
 
+                    let compression_alg = response.select_compression_alg();
+                    let seq_no = response.seq_no;
+                    let window_size = response.window_size;
+
+                    // Use a temporary channel to put the received segment back
+                    // into a channel. This simplifies the implementation in the
+                    // stream.
+                    let (tx, rx) = {
+                        let (mut tx, rx) = mpsc::channel(0);
+                        tx.try_send(Ok(response))
+                            .expect("failed to re-enqueue 3rd segment");
+
+                        let tx = tx.sink_map_err(|_| {
+                            trace!("intermediate channel dropped")
+                        });
+
+                        (tx, rx)
+                    };
+                    tokio::spawn(
+                        self.recv
+                            .take()
+                            .expect(POLLED_TWICE)
+                            .forward(tx)
+                            .map(|_| ()),
+                    );
+
                     // Create the actual stream
                     let stream = SutpStream::create(
-                        self.recv.take().expect(POLLED_TWICE),
+                        rx,
                         self.send.clone(),
-                        self.local_seq_no,
+                        self.local_seq_no.0,
                         self.remote_addr,
-                        Wrapping(response.seq_no),
-                        response.window_size,
-                        response.select_compression_alg(),
+                        seq_no,
+                        window_size,
+                        compression_alg,
                     );
 
                     return Ok(Async::Ready(stream));

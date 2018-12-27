@@ -7,7 +7,7 @@ use crate::{
 };
 use bytes::{Buf, BufMut, Bytes, BytesMut, IntoBuf};
 use futures::{prelude::*, sync::mpsc, try_ready};
-use log::trace;
+use log::{debug, trace};
 use std::{
     collections::{BTreeMap, BTreeSet},
     io::{self, Error, ErrorKind, Read, Write},
@@ -125,6 +125,9 @@ enum StreamState {
     /// data can still be read, but anything after that will cause an error.
     FinRecvd,
 
+    /// A FIN chunk has been received, and we are currently sending out our own.
+    LastBreath,
+
     /// The connection is closed and no further data can be sent.
     Closed,
 }
@@ -148,20 +151,20 @@ impl SutpStream {
     pub(crate) fn create(
         recv: mpsc::Receiver<Result<Segment, Error>>,
         send: mpsc::Sender<(Bytes, SocketAddr)>,
-        local_seq_no: Wrapping<u32>,
+        local_seq_no: u32,
         remote_addr: SocketAddr,
-        remote_seq_no: Wrapping<u32>,
+        remote_seq_no: u32,
         remote_win_size: u32,
         compression_alg: Option<CompressionAlgorithm>,
     ) -> Self {
         Self {
             compression_algorithm: compression_alg,
-            highest_consecutive_remote_seq_no: remote_seq_no,
-            local_seq_no,
+            highest_consecutive_remote_seq_no: Wrapping(remote_seq_no),
+            local_seq_no: Wrapping(local_seq_no),
             nak_set: BTreeSet::new(),
             order_buf: Window::with_lowest_key(
                 BUF_SIZE / OUTGOING_PAYLOAD_SIZE,
-                (remote_seq_no + ONE).0 as usize,
+                remote_seq_no as usize,
             ),
             outgoing_segments: BTreeMap::new(),
             r_buf: BytesMut::with_capacity(BUF_SIZE),
@@ -176,13 +179,32 @@ impl SutpStream {
         }
     }
 
-    /// Asserts that the stream is in the proper state to be able to write data
-    /// to the network and to the other side.
+    /// Asserts that the stream is in the proper state to read or flush.
+    fn assert_can_flush(&self) -> io::Result<()> {
+        match self.state {
+            StreamState::Closed => Err(ErrorKind::NotConnected.into()),
+            _ => Ok(()),
+        }
+    }
+
+    /// Asserts that the stream is in the proper state to write.
     fn assert_can_write(&self) -> io::Result<()> {
         match self.state {
             StreamState::Open | StreamState::FinRecvd => Ok(()),
             _ => Err(ErrorKind::NotConnected.into()),
         }
+    }
+
+    /// Fills the given buffer with as much read data as possible.
+    fn fill_buf(&mut self, buf: &mut [u8]) -> usize {
+        let copy_count = buf.len().min(self.r_buf.len());
+        self.r_buf
+            .split_to(copy_count)
+            .freeze()
+            .into_buf()
+            .copy_to_slice(&mut buf[..copy_count]);
+
+        copy_count
     }
 
     /// Gets a fresh sequence number.
@@ -193,22 +215,24 @@ impl SutpStream {
 
     /// Asynchronously tries to read data off the stream.
     fn poll_read(&mut self, buf: &mut [u8]) -> Poll<usize, io::Error> {
-        if self.state == StreamState::Closed {
-            return Err(ErrorKind::NotConnected.into());
-        } else if buf.is_empty() {
-            return Ok(Async::Ready(0));
+        // If we have been closed, read just what's left, and don't process anything
+        // anymore if a FIN has been received.
+
+        while self.poll_process()? {
+            match self.state {
+                StreamState::Closed if self.r_buf.is_empty() => {
+                    return Err(ErrorKind::NotConnected.into())
+                }
+                StreamState::FinRecvd | StreamState::LastBreath
+                    if self.r_buf.is_empty() =>
+                {
+                    return Ok(Async::Ready(0))
+                }
+                _ => {}
+            }
         }
 
-        self.poll_process()?;
-
-        let copy_count = buf.len().min(self.r_buf.len());
-        self.r_buf
-            .split_to(copy_count)
-            .freeze()
-            .into_buf()
-            .copy_to_slice(&mut buf[..copy_count]);
-
-        Ok(Async::Ready(copy_count))
+        Ok(Async::Ready(self.fill_buf(buf)))
     }
 
     /// Asynchronously tries to write data to the stream.
@@ -217,6 +241,8 @@ impl SutpStream {
     /// to the network.
     fn poll_write(&mut self, buf: &[u8]) -> Poll<usize, io::Error> {
         self.assert_can_write()?;
+
+        trace!("writing {} bytes", buf.len());
 
         if buf.is_empty() {
             return Ok(Async::Ready(0));
@@ -234,67 +260,85 @@ impl SutpStream {
     ///
     /// This function does not wait for the sent segments to be acked.
     fn poll_flush(&mut self) -> Poll<(), io::Error> {
-        self.assert_can_write()?;
+        self.assert_can_flush()?;
 
-        self.poll_process()?;
-        self.prepare_segments();
+        trace!("flushing");
 
-        // Gah I hate this style, but functional combinators don't allow
-        // modifications to the control flow of this function and we need
-        // those to handle erros and non-readyness.
-        for outgoing in self.outgoing_segments.values_mut() {
-            if !outgoing.should_send()? {
-                continue;
-            }
-            if (self.remote_window_size as usize) < outgoing.data.len() {
-                break;
-            }
+        while {
+            self.prepare_segments();
 
-            // Send the segment to the driver
-            loop {
-                let poll_res = self
-                    .send
-                    .start_send((outgoing.data.clone(), self.remote_addr))
-                    .map_err(|_| {
-                        Error::new(ErrorKind::Other, "driver has gone away")
-                    });
-
-                if poll_res?.is_ready() {
+            // Gah I hate this style, but functional combinators don't allow
+            // modifications to the control flow of this function and we need
+            // those to handle erros and non-readyness.
+            for outgoing in self.outgoing_segments.values_mut() {
+                match outgoing.should_send() {
+                    Ok(true) => {}
+                    Ok(false) => continue,
+                    Err(e) => {
+                        self.state = StreamState::Closed;
+                        return Err(e);
+                    }
+                }
+                if (self.remote_window_size as usize) < outgoing.data.len() {
                     break;
                 }
 
-                try_ready!({
-                    self.send.poll_complete().map_err(|_| {
-                        Error::new(ErrorKind::Other, "driver has gone away")
-                    })
-                });
+                // Send the segment to the driver
+                loop {
+                    let poll_res = self
+                        .send
+                        .start_send((outgoing.data.clone(), self.remote_addr))
+                        .map_err(|_| {
+                            Error::new(ErrorKind::Other, "driver has gone away")
+                        });
+
+                    if poll_res?.is_ready() {
+                        break;
+                    }
+
+                    try_ready!({
+                        self.send.poll_complete().map_err(|_| {
+                            Error::new(ErrorKind::Other, "driver has gone away")
+                        })
+                    });
+                }
+
+                outgoing.start_timers();
+                self.remote_window_size
+                    .saturating_sub(outgoing.data.len() as u32);
             }
 
-            outgoing.start_timers();
-            self.remote_window_size
-                .saturating_sub(outgoing.data.len() as u32);
-        }
+            self.poll_process()?
+        } { }
 
-        self.poll_process()?;
         Ok(Async::Ready(()))
     }
 
     /// Asynchronously drives the protocol automaton receiving new segments,
     /// preparing ACK segments for received ones, etc.
-    fn poll_process(&mut self) -> Result<(), io::Error> {
+    fn poll_process(&mut self) -> Result<bool, io::Error> {
+        let mut has_recvd_segments = false;
+
         loop {
             // Check for new segments on the channel
             let segment = match self.recv.poll().expect("mpsc::Receiver error") {
-                Async::Ready(Some(Ok(segment))) => segment,
+                Async::Ready(Some(Ok(segment))) => {
+                    has_recvd_segments = true;
+                    segment
+                }
                 Async::Ready(Some(Err(e))) => {
-                    trace!("received invalid segment {:?}", e);
+                    debug!("received invalid segment {:?}", e);
                     continue;
                 }
                 Async::Ready(None) => {
                     return Err(Error::new(ErrorKind::Other, "driver has gone away"))
                 }
-                Async::NotReady => break,
+                Async::NotReady => {
+                    break;
+                }
             };
+
+            trace!("received segment {}", segment.seq_no);
 
             // Store the segment itself for later removal. If the buffer is full,
             // at it to the NAK set.
@@ -303,7 +347,10 @@ impl SutpStream {
                 Err(InsertError::DistanceTooLarge(s)) => {
                     self.nak_set.insert(s.seq_no);
                 }
-                Err(InsertError::KeyTooLow(_)) => continue,
+                Err(InsertError::KeyTooLow(s)) => {
+                    trace!("already seen segment {}", s.seq_no);
+                    continue;
+                }
                 Err(InsertError::WouldOverwrite(s)) => {
                     self.nak_set.insert(s.seq_no);
                 }
@@ -312,8 +359,15 @@ impl SutpStream {
 
         let mut highest_seq_no = None;
 
+        // Track if we have seen other chunks than SACK chunks, because segments
+        // containing just these won't be ACKed.
+        let mut has_seen_just_sack = true;
+
         for segment in self.order_buf.drain() {
+            trace!("processing segment {} with {:?}", segment.seq_no, segment.chunks);
+
             highest_seq_no = Some(segment.seq_no);
+            has_seen_just_sack = segment.is_just_sack();
 
             // Remove segment from NAK list since it's been successfully received
             self.nak_set.remove(&segment.seq_no);
@@ -337,14 +391,38 @@ impl SutpStream {
                 .filter(|(seq_no, _)| segment.ack(**seq_no).is_nak())
                 .for_each(|(_, outgoing)| outgoing.send_immediately());
 
-            // TODO: This loses data if r_buf has too little space!
-            let payloads = segment.chunks.into_iter().filter_map(|ch| match ch {
-                Chunk::Payload(data) => Some(data),
-                _ => None,
-            });
-            for payload in payloads {
-                let copy_count = self.r_buf.remaining_mut().min(payload.len());
-                self.r_buf.put_slice(&payload[..copy_count]);
+            for chunk in segment.chunks {
+                match chunk {
+                    Chunk::Abort => {
+                        trace!("received ABRT chunk");
+
+                        self.r_buf.clear();
+                        self.w_buf.clear();
+
+                        self.state = StreamState::Closed;
+
+                        return Err(ErrorKind::ConnectionAborted.into());
+                    }
+                    Chunk::Fin => {
+                        trace!("received FIN chunk");
+
+                        self.state = match self.state {
+                            StreamState::FinSent | StreamState::LastBreath => {
+                                StreamState::Closed
+                            }
+                            _ => StreamState::FinRecvd,
+                        };
+                    }
+                    Chunk::Payload(payload) => {
+                        trace!("received payload chunk");
+
+                        // TODO: This loses data if r_buf has too little space!
+                        let copy_count =
+                            self.r_buf.remaining_mut().min(payload.len());
+                        self.r_buf.put_slice(&payload[..copy_count]);
+                    }
+                    _ => {}
+                }
             }
         }
 
@@ -355,12 +433,27 @@ impl SutpStream {
             // data loss by segments arriving in the wrong order preventing earlier
             // segments that have not yet been received to be inserted.
             if self.order_buf.is_empty() {
-                self.order_buf
-                    .set_lowest_key(seq_no.wrapping_add(1) as usize)
+                self.order_buf.set_lowest_key(seq_no.wrapping_add(1) as usize)
             }
         }
 
-        Ok(())
+        // Build up an ACK / NAK segment
+        if !has_seen_just_sack {
+            let nak_list = self.nak_set.iter().cloned().collect();
+            let ack_nak_segment = SegmentBuilder::new()
+                .seq_no(self.get_seq_no())
+                .window_size(self.w_buf.remaining_mut() as u32)
+                .with_chunk(Chunk::Sack(
+                    self.highest_consecutive_remote_seq_no.0,
+                    nak_list,
+                ))
+                .build();
+
+            trace!("enqueueing ack segment {} for {:?}", ack_nak_segment.seq_no, ack_nak_segment.chunks);
+            self.enqueue_outgoing(ack_nak_segment);
+        }
+
+        Ok(has_recvd_segments)
     }
 
     /// Creates segments of optimal size out of the buffer that contains
@@ -401,18 +494,6 @@ impl SutpStream {
         // Since everything has been copied to segment_buf, this will reclaim
         // the entire buffer space without allocating.
         self.w_buf.reserve(BUF_SIZE);
-
-        // Build up an ACK / NAK segment
-        let nak_list = self.nak_set.iter().cloned().collect();
-        let ack_nak_segment = SegmentBuilder::new()
-            .seq_no(self.get_seq_no())
-            .window_size(self.w_buf.remaining_mut() as u32)
-            .with_chunk(Chunk::Sack(
-                self.highest_consecutive_remote_seq_no.0,
-                nak_list,
-            ))
-            .build();
-        self.enqueue_outgoing(ack_nak_segment);
     }
 
     /// Serializes the given segment and enqueues it for sending.
@@ -453,9 +534,38 @@ impl Write for SutpStream {
 
 impl AsyncWrite for SutpStream {
     fn shutdown(&mut self) -> Poll<(), io::Error> {
-        try_ready!(self.poll_flush());
+        loop {
+            match self.state {
+                s @ StreamState::Open | s @ StreamState::FinRecvd => {
+                    trace!("shutdown: open | finrecvd");
 
-        unimplemented!()
+                    try_ready!(self.poll_flush());
+
+                    let fin_segment = SegmentBuilder::new()
+                        .seq_no(self.get_seq_no())
+                        .window_size(self.w_buf.remaining_mut() as u32)
+                        .with_chunk(Chunk::Fin)
+                        .build();
+
+                    self.enqueue_outgoing(fin_segment);
+                    self.state = match s {
+                        StreamState::Open => StreamState::FinSent,
+                        StreamState::FinRecvd => StreamState::LastBreath,
+                        _ => unreachable!(),
+                    };
+                }
+                StreamState::FinSent | StreamState::LastBreath => {
+                    trace!("shutdown: fin sent | last breath");
+
+                    try_ready!(self.poll_flush());
+                    return Ok(Async::NotReady);
+                }
+                StreamState::Closed => {
+                    trace!("shutdown: closed");
+                    return Ok(Async::Ready(()));
+                }
+            }
+        }
     }
 }
 
