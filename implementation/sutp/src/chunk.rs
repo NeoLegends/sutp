@@ -3,6 +3,7 @@
 
 use byteorder::{NetworkEndian, WriteBytesExt};
 use bytes::{Buf, Bytes, IntoBuf};
+use log::warn;
 use std::{
     io::{self, Result, Write},
     mem, u16,
@@ -234,7 +235,16 @@ impl Chunk {
         let len = buf.get_u16_be() as usize;
 
         // Ensure the list length is valid (i. e. a multiple of size_of::<u32>())
-        debug_log_eq!(len % U32_SIZE, 0);
+        if (len % U32_SIZE) != 0 {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!(
+                    "compression negotiation list length not multiple of {}",
+                    U32_SIZE
+                ),
+            ));
+        }
+
         assert_size!(buf, len);
 
         // You can collect an iterator of results into a result of an iterator
@@ -268,12 +278,17 @@ impl Chunk {
         let mut buf = r.as_ref().into_buf();
         let len = buf.get_u16_be() as usize;
 
-        debug_log_assert!(len >= U32_SIZE);
-        debug_log_eq!(len % U32_SIZE, 0);
+        if (len % U32_SIZE) != 0 {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("sack list length is not a multiple of {}", U32_SIZE),
+            ));
+        }
+
         assert_size!(buf, len);
 
         let ack_no = buf.get_u32_be();
-        let nak_list = (0..((len - U32_SIZE) / U32_SIZE))
+        let nak_list = (0..(len.saturating_sub(U32_SIZE) / U32_SIZE))
             .map(|_| buf.get_u32_be())
             .collect();
 
@@ -287,7 +302,12 @@ impl Chunk {
         let mut buf = r.as_ref().into_buf();
         let len = buf.get_u16_be() as usize;
 
-        debug_log_eq!(len, 1);
+        if len != 1 {
+            warn!(
+                "security flag chunk length was {}, but is expected to be 1",
+                len
+            );
+        }
         assert_size!(buf, 1);
 
         let flag_value = buf.get_u8();
@@ -322,7 +342,9 @@ impl Chunk {
 
         // Ensure we are given correct data, but otherwise discard what we've been
         // given for a robust implementation.
-        debug_log_eq!(len, 0);
+        if len != 0 {
+            warn!("flag chunk length is {}, but is expected to be 0", len);
+        }
         assert_size!(buf, len);
 
         // Reading from the buffer doesn't advance the Bytes
