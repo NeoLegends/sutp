@@ -4,7 +4,7 @@ use crate::{
     chunk::{Chunk, CompressionAlgorithm},
     segment::{Segment, SegmentBuilder},
     stream::SutpStream,
-    CONNECTION_TIMEOUT, RESPONSE_SEGMENT_TIMEOUT,
+    CONNECTION_TIMEOUT, DRIVER_AWAY, MISSING_SEGMENT, RESPONSE_SEGMENT_TIMEOUT,
 };
 use bytes::Bytes;
 use futures::{prelude::*, sync::mpsc, try_ready};
@@ -16,8 +16,6 @@ use std::{
 };
 use tokio::{clock, timer::Delay};
 
-const DRIVER_AWAY: &str = "driver has gone away";
-const MISSING_SGMT: &str = "missing segment";
 const POLLED_TWICE: &str = "cannot poll Accept twice";
 
 /// A future representing an SUTP stream being accepted.
@@ -125,7 +123,7 @@ impl Accept {
             .expect(POLLED_TWICE)
             .poll()
             .expect(DRIVER_AWAY)
-            .map(|maybe_segment| maybe_segment.expect(MISSING_SGMT));
+            .map(|maybe_segment| maybe_segment.expect(MISSING_SEGMENT));
         Ok(val)
     }
 
@@ -252,8 +250,9 @@ impl Future for Accept {
                     // stream.
                     let (tx, rx) = {
                         let (mut tx, rx) = mpsc::channel(0);
-                        tx.try_send(Ok(ack_segment))
-                            .expect("failed to re-enqueue 3rd segment");
+
+                        // this can only fail when allocations fail
+                        tx.try_send(Ok(ack_segment)).unwrap();
 
                         let tx = tx.sink_map_err(|_| {
                             trace!("intermediate channel dropped")

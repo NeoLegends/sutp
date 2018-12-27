@@ -3,7 +3,7 @@ use crate::{
     connect::Connect,
     segment::{Segment, SegmentBuilder},
     window::{InsertError, Window},
-    CONNECTION_TIMEOUT, RESPONSE_SEGMENT_TIMEOUT,
+    CONNECTION_TIMEOUT, DRIVER_AWAY, RECEIVER_ERROR, RESPONSE_SEGMENT_TIMEOUT,
 };
 use bytes::{Buf, BufMut, Bytes, BytesMut, IntoBuf};
 use futures::{prelude::*, sync::mpsc, try_ready};
@@ -283,18 +283,16 @@ impl SutpStream {
                     let poll_res = self
                         .send
                         .start_send((outgoing.data.clone(), self.remote_addr))
-                        .map_err(|_| {
-                            Error::new(ErrorKind::Other, "driver has gone away")
-                        });
+                        .map_err(|_| Error::new(ErrorKind::Other, DRIVER_AWAY));
 
                     if poll_res?.is_ready() {
                         break;
                     }
 
                     try_ready!({
-                        self.send.poll_complete().map_err(|_| {
-                            Error::new(ErrorKind::Other, "driver has gone away")
-                        })
+                        self.send
+                            .poll_complete()
+                            .map_err(|_| Error::new(ErrorKind::Other, DRIVER_AWAY))
                     });
                 }
 
@@ -316,7 +314,7 @@ impl SutpStream {
 
         loop {
             // Check for new segments on the channel
-            let segment = match self.recv.poll().expect("mpsc::Receiver error") {
+            let segment = match self.recv.poll().expect(RECEIVER_ERROR) {
                 Async::Ready(Some(Ok(segment))) => {
                     has_recvd_segments = true;
                     segment
@@ -326,7 +324,7 @@ impl SutpStream {
                     continue;
                 }
                 Async::Ready(None) => {
-                    return Err(Error::new(ErrorKind::Other, "driver has gone away"))
+                    return Err(Error::new(ErrorKind::Other, DRIVER_AWAY))
                 }
                 Async::NotReady => {
                     break;

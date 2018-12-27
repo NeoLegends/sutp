@@ -5,7 +5,7 @@ use crate::{
     driver::{Driver, NEW_CONN_QUEUE_SIZE},
     segment::{Segment, SegmentBuilder},
     stream::SutpStream,
-    CONNECTION_TIMEOUT, RESPONSE_SEGMENT_TIMEOUT,
+    CONNECTION_TIMEOUT, DRIVER_AWAY, MISSING_SEGMENT, RESPONSE_SEGMENT_TIMEOUT,
 };
 use bytes::Bytes;
 use futures::{
@@ -22,7 +22,6 @@ use std::{
 };
 use tokio::{clock, net::UdpSocket, timer::Delay};
 
-const DRIVER_AWAY: &str = "driver has gone away";
 const POLLED_TWICE: &str = "cannot poll Connect twice";
 
 lazy_static! {
@@ -212,7 +211,7 @@ impl Inner {
             .expect(POLLED_TWICE)
             .poll()
             .expect(DRIVER_AWAY)
-            .map(|maybe_segment| maybe_segment.expect("missing segment"));
+            .map(|maybe_segment| maybe_segment.expect(MISSING_SEGMENT));
         Ok(val)
     }
 
@@ -302,8 +301,9 @@ impl Future for Inner {
                     // stream.
                     let (tx, rx) = {
                         let (mut tx, rx) = mpsc::channel(0);
-                        tx.try_send(Ok(response))
-                            .expect("failed to re-enqueue 3rd segment");
+
+                        // this can only fail when allocations fail
+                        tx.try_send(Ok(response)).unwrap();
 
                         let tx = tx.sink_map_err(|_| {
                             trace!("intermediate channel dropped")

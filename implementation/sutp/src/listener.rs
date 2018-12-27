@@ -1,6 +1,7 @@
 use crate::{
     accept::Accept,
     driver::{Driver, NEW_CONN_QUEUE_SIZE},
+    RECEIVER_ERROR,
 };
 use futures::{
     prelude::*,
@@ -102,7 +103,7 @@ impl SutpListener {
 
         // Channel errors can only occur when the sender has been dropped, and
         // this only happens on hard I/O errors.
-        match self.conn_recv.poll().expect("mpsc::Receiver error") {
+        match self.conn_recv.poll().expect(RECEIVER_ERROR) {
             // We're given IO errors as channel items
             Async::Ready(Some(conn)) => Ok(Async::Ready(conn)),
             Async::Ready(None) => panic!(POLL_AFTER_IO_ERR),

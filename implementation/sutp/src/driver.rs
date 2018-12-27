@@ -1,6 +1,6 @@
 //! Implements the background processor.
 
-use crate::{accept::Accept, segment::Segment, UDP_DGRAM_SIZE};
+use crate::{accept::Accept, segment::Segment, RECEIVER_ERROR, UDP_DGRAM_SIZE};
 use bytes::{Bytes, BytesMut};
 use futures::{
     prelude::*,
@@ -287,7 +287,7 @@ impl Driver {
     /// connection table.
     fn poll_shutdown(&mut self) -> Poll<(), ()> {
         loop {
-            match self.shutdown_rx.poll().expect("mpsc::Receiver failure") {
+            match self.shutdown_rx.poll().expect(RECEIVER_ERROR) {
                 Async::Ready(Some(addr)) => self.conn_map.remove(&addr),
                 _ => return Ok(Async::NotReady),
             };
@@ -310,8 +310,8 @@ impl Driver {
             let (mut tx, rx) = mpsc::channel(STREAM_SEGMENT_QUEUE_SIZE);
 
             // Queue initial segment for processing in the SutpStream
-            tx.try_send(Ok(init_sgmt))
-                .expect("failed to queue initial segment");
+            // This doesn't fail, only when the allocation fails.
+            tx.try_send(Ok(init_sgmt)).unwrap();
 
             self.conn_map.insert(address, tx);
 
