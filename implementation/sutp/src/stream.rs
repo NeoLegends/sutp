@@ -37,6 +37,9 @@ const BUF_SIZE: usize = 1024 * 1024; // 1MB
 const OUTGOING_PAYLOAD_SIZE: usize = 1024;
 
 /// A full-duplex SUTP stream.
+///
+/// This struct implements the tokio `AsyncRead` and `AsyncWrite`-family of traits
+/// to allow for asynchronous data transfer over the network.
 #[derive(Debug)]
 pub struct SutpStream {
     /// The negotiated compression algorithm.

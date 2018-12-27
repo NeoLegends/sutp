@@ -1,3 +1,15 @@
+//! An implementation of the [2018 COMSYS Software Exercise Class](https://laboratory.comsys.rwth-aachen.de/sutp/data-format)
+//! transport protocol.
+//!
+//! This implementation uses asynchronous I/O using the [tokio](https://tokio.rs)
+//! and [futures](https://github.com/rust-lang-nursery/futures-rs) stack.
+//!
+//! New connection can either be made (client-side) using `SutpStream::connect`
+//! or via setting up an `SutpListener` and accepting new connections on it.
+//!
+//! See [SutpStream](struct.SutpStream.html) or [SutpListener](struct.SutpListener.html)
+//! for more detail.
+
 mod accept;
 mod chunk;
 mod connect;

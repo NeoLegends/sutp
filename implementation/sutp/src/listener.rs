@@ -22,6 +22,10 @@ pub struct Incoming {
 }
 
 /// An asynchronous SUTP connection listener.
+///
+/// It is recommended to use the [`incoming`](#method.incoming)-method to convert
+/// the listener into a futures-stream, which then can be used much more easily
+/// than the listener itself.
 #[derive(Debug)]
 pub struct SutpListener {
     // This internally consists just of two channels that connect to the driver.
