@@ -13,7 +13,6 @@ use std::{
     io::{self, Error, ErrorKind, Read, Write},
     mem,
     net::SocketAddr,
-    num::Wrapping,
 };
 use tokio::{
     clock,
@@ -23,9 +22,6 @@ use tokio::{
 
 /// The default size of the receiving and sending buffers.
 const BUF_SIZE: usize = 1024 * 1024; // 1MB
-
-/// The 1 as wrapping u32.
-const ONE: Wrapping<u32> = Wrapping(1);
 
 /// The default size of outgoing payload chunks (1k).
 const OUTGOING_PAYLOAD_SIZE: usize = 1024;
@@ -47,10 +43,10 @@ pub struct SutpStream {
     ///
     /// I. e., this is not the sequence number of the segment we expect next, but
     /// the one we currently have.
-    highest_consecutive_remote_seq_no: Wrapping<u32>,
+    highest_consecutive_remote_seq_no: u32,
 
     /// The current local sequence number.
-    local_seq_no: Wrapping<u32>,
+    local_seq_no: u32,
 
     /// The list of sequence numbers of segments that could not be
     /// received properly.
@@ -163,8 +159,8 @@ impl SutpStream {
     ) -> Self {
         Self {
             compression_algorithm: compression_alg,
-            highest_consecutive_remote_seq_no: Wrapping(remote_seq_no),
-            local_seq_no: Wrapping(local_seq_no),
+            highest_consecutive_remote_seq_no: remote_seq_no,
+            local_seq_no,
             nak_set: BTreeSet::new(),
             on_shutdown,
             order_buf: Window::with_lowest_key(
@@ -215,8 +211,8 @@ impl SutpStream {
     /// Gets a fresh sequence number by first incrementing the stored one and
     /// returning the incremented value.
     fn get_seq_no(&mut self) -> u32 {
-        self.local_seq_no += ONE;
-        self.local_seq_no.0
+        self.local_seq_no = self.local_seq_no.wrapping_add(1);
+        self.local_seq_no
     }
 
     /// Asynchronously tries to read data off the stream.
@@ -437,7 +433,7 @@ impl SutpStream {
         }
 
         if let Some(seq_no) = highest_seq_no {
-            self.highest_consecutive_remote_seq_no = Wrapping(seq_no);
+            self.highest_consecutive_remote_seq_no = seq_no;
 
             // Set the next expected sequence number in our sparse buffer to prevent
             // data loss by segments arriving in the wrong order preventing earlier
@@ -455,7 +451,7 @@ impl SutpStream {
                 .seq_no(self.get_seq_no())
                 .window_size(self.w_buf.remaining_mut() as u32)
                 .with_chunk(Chunk::Sack(
-                    self.highest_consecutive_remote_seq_no.0,
+                    self.highest_consecutive_remote_seq_no,
                     nak_list,
                 ))
                 .build();

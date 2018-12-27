@@ -19,7 +19,6 @@ use rand;
 use std::{
     io::{Error, ErrorKind},
     net::{IpAddr, Ipv4Addr, SocketAddr},
-    num::Wrapping,
 };
 use tokio::{clock, net::UdpSocket, timer::Delay};
 
@@ -62,7 +61,7 @@ struct Inner {
     init_segment_buf: Bytes,
 
     /// The local sequence number.
-    local_seq_no: Wrapping<u32>,
+    local_seq_no: u32,
 
     /// The channel of incoming segments.
     recv: Option<mpsc::Receiver<Result<Segment, Error>>>,
@@ -71,7 +70,7 @@ struct Inner {
     remote_addr: SocketAddr,
 
     /// The remote sequence number.
-    remote_seq_no: Wrapping<u32>,
+    remote_seq_no: u32,
 
     /// The channel to send outgoing segments to the driver.
     send: mpsc::Sender<(Bytes, SocketAddr)>,
@@ -149,11 +148,11 @@ impl Inner {
             let elapsed_at = clock::now() + CONNECTION_TIMEOUT;
             Delay::new(elapsed_at)
         };
-        let seq_no = Wrapping(rand::random());
+        let seq_no = rand::random();
         let initial_sgmt_buf = {
             let comp_algs = SUPPORTED_COMPRESSION_ALGS.as_ref().into();
             SegmentBuilder::new()
-                .seq_no(seq_no.0)
+                .seq_no(seq_no)
                 .window_size(16 * 1024)
                 .with_chunk(Chunk::Syn)
                 .with_chunk(Chunk::CompressionNegotiation(comp_algs))
@@ -167,7 +166,7 @@ impl Inner {
             local_seq_no: seq_no,
             recv: Some(from_driver_rx),
             remote_addr: *addr,
-            remote_seq_no: Wrapping(0),
+            remote_seq_no: 0,
             send: to_driver_tx,
             shutdown_tx,
             state: State::Start,
@@ -288,7 +287,7 @@ impl Future for Inner {
                             continue;
                         }
                     };
-                    if !response.is_syn2_and_acks(self.local_seq_no.0) {
+                    if !response.is_syn2_and_acks(self.local_seq_no) {
                         self.state = State::Start;
                         continue;
                     }
@@ -324,7 +323,7 @@ impl Future for Inner {
                         rx,
                         self.send.clone(),
                         self.shutdown_tx.clone(),
-                        self.local_seq_no.0,
+                        self.local_seq_no,
                         self.remote_addr,
                         seq_no,
                         window_size,
