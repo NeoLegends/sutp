@@ -39,15 +39,30 @@ fn hello_world_cts() {
         let srv_addr = "0.0.0.0:12345".parse().unwrap();
         let client_addr = "127.0.0.1:12345".parse().unwrap();
 
+        let err_tx_2 = err_tx.clone();
         let fut_srv = SutpListener::bind(&srv_addr)
             .unwrap()
             .incoming()
             .take(1)
             .map_err(|e| panic!("accept error: {:?}", e))
-            .for_each(|(conn, _)| {
+            .for_each(move |(conn, _)| {
+                let err_tx_3 = err_tx_2.clone();
+
                 conn.and_then(|stream| read_to_end(stream, Vec::new()))
-                    .and_then(|(stream, buf)| {
-                        assert_eq!(&String::from_utf8(buf).unwrap(), TEST_STRING);
+                    .and_then(move |(stream, buf)| {
+                        let deserialized = String::from_utf8_lossy(&buf);
+
+                        if deserialized != TEST_STRING {
+                            let err_msg = format!(
+                                "strings don't match: received '{}' but wanted '{}'",
+                                deserialized, TEST_STRING
+                            );
+
+                            err_tx_3
+                                .send(Error::new(ErrorKind::InvalidData, err_msg))
+                                .unwrap();
+                        }
+
                         shutdown(stream)
                     })
                     .map(|_| ())
