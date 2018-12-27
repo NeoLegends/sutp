@@ -1,10 +1,7 @@
 //! This module implements the data format of segments as specified in
 //! https://laboratory.comsys.rwth-aachen.de/sutp/data-format/blob/master/README.md.
 
-use crate::{
-    chunk::{Chunk, CompressionAlgorithm},
-    ResultExt,
-};
+use crate::chunk::{Chunk, CompressionAlgorithm};
 use byteorder::{ByteOrder, NetworkEndian, WriteBytesExt};
 use bytes::{Buf, Bytes, IntoBuf};
 use flate2::{Crc, CrcWriter};
@@ -259,11 +256,13 @@ impl Segment {
     /// It is strongly advised to pass a buffering `io.Read` implementation
     /// since the parser will issue lots of small calls to `read`.
     pub fn read_from_and_validate(r: &mut Bytes) -> io::Result<Segment> {
-        Self::read_from(r).inspect_mut(|segment| {
-            segment
-                .validate()
-                .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
-        })
+        let segment = Self::read_from(r)?;
+
+        segment
+            .validate()
+            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+
+        Ok(segment)
     }
 
     /// Writes the segment to the given writer.
