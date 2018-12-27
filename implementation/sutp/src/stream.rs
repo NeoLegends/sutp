@@ -461,7 +461,7 @@ impl SutpStream {
                 ack_nak_segment.seq_no,
                 ack_nak_segment.chunks
             );
-            self.enqueue_outgoing(ack_nak_segment);
+            self.enqueue_outgoing(&ack_nak_segment);
         }
 
         Ok(has_recvd_segments)
@@ -499,7 +499,7 @@ impl SutpStream {
                 .with_chunk(Chunk::Payload(payload.freeze()))
                 .build();
 
-            self.enqueue_outgoing(segment);
+            self.enqueue_outgoing(&segment);
         }
 
         // Since everything has been copied to segment_buf, this will reclaim
@@ -508,7 +508,7 @@ impl SutpStream {
     }
 
     /// Serializes the given segment and enqueues it for sending.
-    fn enqueue_outgoing(&mut self, segment: Segment) {
+    fn enqueue_outgoing(&mut self, segment: &Segment) {
         self.segment_buf.reserve(segment.binary_len());
 
         segment
@@ -558,7 +558,7 @@ impl AsyncWrite for SutpStream {
                         .with_chunk(Chunk::Fin)
                         .build();
 
-                    self.enqueue_outgoing(fin_segment);
+                    self.enqueue_outgoing(&fin_segment);
                     self.state = match s {
                         StreamState::Open => StreamState::FinSent,
                         StreamState::FinRecvd => StreamState::LastBreath,

@@ -126,6 +126,7 @@ impl Inner {
     /// # Panics
     ///
     /// Panics if the driver cannot be spawned to the default executor.
+    #[allow(clippy::new_ret_no_self)]
     pub fn new(addr: &SocketAddr) -> Result<Self, Error> {
         let (err_tx, err_rx) = oneshot::channel();
         let (from_driver_tx, from_driver_rx) = mpsc::channel(NEW_CONN_QUEUE_SIZE);

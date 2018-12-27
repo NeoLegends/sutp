@@ -296,6 +296,7 @@ impl Driver {
 
     /// Sets up the necessary channels from and to the driver for a new connection
     /// to `addr` with the initial segment `init_sgmt`.
+    #[allow(clippy::type_complexity)]
     fn prepare_channels(
         &mut self,
         address: SocketAddr,
@@ -381,11 +382,10 @@ impl Future for Driver {
             }
 
             // Poll until everything returns NotReady
-            match (self.poll_shutdown()?, self.poll_recv()?, self.poll_send()?) {
-                (Async::NotReady, Async::NotReady, Async::NotReady) => {
-                    return Ok(Async::NotReady)
-                }
-                _ => {}
+            if let (Async::NotReady, Async::NotReady, Async::NotReady) =
+                (self.poll_shutdown()?, self.poll_recv()?, self.poll_send()?)
+            {
+                return Ok(Async::NotReady);
             }
         }
     }
