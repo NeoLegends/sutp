@@ -26,13 +26,6 @@ const BUF_SIZE: usize = 1024 * 1024; // 1MB
 /// The default size of outgoing payload chunks (1k).
 const OUTGOING_PAYLOAD_SIZE: usize = 1024;
 
-/// The minimum window size needed to still allow data transmits.
-///
-/// If the reported window size is below this constant, we apply backpressure and
-/// wait until the receiver informs us about more space left (we can reasonably
-/// assume that receivers will have a larger window than 128 bytes, lol).
-const MIN_OUTGOING_WINDOW_SIZE: usize = 128;
-
 /// A full-duplex SUTP stream.
 #[derive(Debug)]
 pub struct SutpStream {
