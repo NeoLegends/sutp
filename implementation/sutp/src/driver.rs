@@ -259,12 +259,8 @@ impl Driver {
 
             trace!("setting up accept future");
 
-            let stream = Accept::from_listener(
-                addr,
-                segment_rx,
-                segment_tx,
-                shutdown_tx,
-            );
+            let stream =
+                Accept::from_listener(addr, segment_rx, segment_tx, shutdown_tx);
             self.new_conn_fut = Some(new_conn.send((stream, addr)));
         } else {
             // The segment is invalid and we don't know where it's coming from,
