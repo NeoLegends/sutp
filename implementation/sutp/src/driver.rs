@@ -235,32 +235,13 @@ impl Driver {
                 return Ok(Async::Ready(()));
             }
 
-            let segment_rx = {
-                let (mut tx, rx) = mpsc::channel(STREAM_SEGMENT_QUEUE_SIZE);
-
-                // Queue initial segment for processing in the SutpStream
-                tx.try_send(Ok(segment))
-                    .expect("failed to queue initial segment");
-
-                self.conn_map.insert(addr, tx);
-
-                rx
-            };
-            let segment_tx = self
-                .segment_tx
-                .as_ref()
-                .cloned()
-                .expect("missing segment tx");
-            let shutdown_tx = self
-                .shutdown_tx
-                .as_ref()
-                .cloned()
-                .expect("missing segment tx");
-
             trace!("setting up accept future");
 
+            let (segment_tx, segment_rx, shutdown_tx) =
+                self.prepare_channels(addr, segment);
             let stream =
                 Accept::from_listener(addr, segment_rx, segment_tx, shutdown_tx);
+
             self.new_conn_fut = Some(new_conn.send((stream, addr)));
         } else {
             // The segment is invalid and we don't know where it's coming from,
@@ -311,6 +292,42 @@ impl Driver {
                 _ => return Ok(Async::NotReady),
             };
         }
+    }
+
+    /// Sets up the necessary channels from and to the driver for a new connection
+    /// to `addr` with the initial segment `init_sgmt`.
+    fn prepare_channels(
+        &mut self,
+        address: SocketAddr,
+        init_sgmt: Segment,
+    ) -> (
+        mpsc::Sender<(Bytes, SocketAddr)>,
+        mpsc::Receiver<Result<Segment, io::Error>>,
+        mpsc::UnboundedSender<SocketAddr>,
+    ) {
+        let segment_rx = {
+            let (mut tx, rx) = mpsc::channel(STREAM_SEGMENT_QUEUE_SIZE);
+
+            // Queue initial segment for processing in the SutpStream
+            tx.try_send(Ok(init_sgmt))
+                .expect("failed to queue initial segment");
+
+            self.conn_map.insert(address, tx);
+
+            rx
+        };
+        let segment_tx = self
+            .segment_tx
+            .as_ref()
+            .cloned()
+            .expect("missing segment tx");
+        let shutdown_tx = self
+            .shutdown_tx
+            .as_ref()
+            .cloned()
+            .expect("missing segment tx");
+
+        (segment_tx, segment_rx, shutdown_tx)
     }
 
     /// Asynchronously reads a segment off the UDP socket.
