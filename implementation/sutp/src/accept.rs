@@ -50,6 +50,9 @@ pub struct Accept {
     /// The channel to send outgoing segments over.
     send: mpsc::Sender<(Bytes, SocketAddr)>,
 
+    /// The channel to notify the driver about the shutdown of this stream over.
+    shutdown_tx: mpsc::UnboundedSender<SocketAddr>,
+
     /// The internal automaton state.
     state: State,
 }
@@ -72,6 +75,7 @@ impl Accept {
         addr: SocketAddr,
         recv: mpsc::Receiver<Result<Segment, Error>>,
         send: mpsc::Sender<(Bytes, SocketAddr)>,
+        on_shutdown: mpsc::UnboundedSender<SocketAddr>,
     ) -> Self {
         Self {
             ack_segment: None,
@@ -82,6 +86,7 @@ impl Accept {
             remote_addr: addr,
             remote_seq_no: 0,
             send,
+            shutdown_tx: on_shutdown,
             state: State::Start,
         }
     }
@@ -270,6 +275,7 @@ impl Future for Accept {
                     let stream = SutpStream::create(
                         rx,
                         self.send.clone(),
+                        self.shutdown_tx.clone(),
                         self.local_seq_no,
                         self.remote_addr,
                         seq_no,

@@ -76,6 +76,9 @@ struct Inner {
     /// The channel to send outgoing segments to the driver.
     send: mpsc::Sender<(Bytes, SocketAddr)>,
 
+    /// The channel to notify the driver about the shutdown of this stream over.
+    shutdown_tx: mpsc::UnboundedSender<SocketAddr>,
+
     /// The internal automaton state.
     state: State,
 
@@ -128,6 +131,7 @@ impl Inner {
         let (err_tx, err_rx) = oneshot::channel();
         let (from_driver_tx, from_driver_rx) = mpsc::channel(NEW_CONN_QUEUE_SIZE);
         let (to_driver_tx, to_driver_rx) = mpsc::channel(NEW_CONN_QUEUE_SIZE);
+        let (shutdown_tx, shutdown_rx) = mpsc::unbounded();
 
         // Spawn a driver for this connection
         let driver = Driver::from_connection(
@@ -136,6 +140,7 @@ impl Inner {
             addr,
             from_driver_tx,
             to_driver_rx,
+            shutdown_rx,
         );
         tokio::spawn(driver);
 
@@ -164,6 +169,7 @@ impl Inner {
             remote_addr: *addr,
             remote_seq_no: Wrapping(0),
             send: to_driver_tx,
+            shutdown_tx,
             state: State::Start,
             timeout: conn_timeout,
         })
@@ -317,6 +323,7 @@ impl Future for Inner {
                     let stream = SutpStream::create(
                         rx,
                         self.send.clone(),
+                        self.shutdown_tx.clone(),
                         self.local_seq_no.0,
                         self.remote_addr,
                         seq_no,

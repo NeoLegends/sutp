@@ -79,6 +79,17 @@ pub struct Driver {
     /// If this is `None`, new connections cannot be accepted anymore.
     segment_tx: Option<mpsc::Sender<(Bytes, SocketAddr)>>,
 
+    /// The channel any existing streams publish their dropping to.
+    ///
+    /// This is used to properly stop the driver when streams have dropped.
+    shutdown_rx: mpsc::UnboundedReceiver<SocketAddr>,
+
+    /// The sending side of the `shutdown_tx`, kept here for cloning it for new
+    /// connections.
+    ///
+    /// If this is `None`, new connections cannot be accepted anymore.
+    shutdown_tx: Option<mpsc::UnboundedSender<SocketAddr>>,
+
     /// The actual UDP socket.
     socket: UdpSocket,
 }
@@ -108,6 +119,7 @@ impl Driver {
         new_conn: mpsc::Sender<(Accept, SocketAddr)>,
     ) -> Self {
         let (sgmt_tx, sgmt_rx) = mpsc::channel(NEW_CONN_QUEUE_SIZE);
+        let (shutdown_tx, shutdown_rx) = mpsc::unbounded();
 
         Self {
             conn_map: HashMap::new(),
@@ -118,6 +130,8 @@ impl Driver {
             recv_buf: BytesMut::with_capacity(UDP_DGRAM_SIZE),
             segment_rx: sgmt_rx,
             segment_tx: Some(sgmt_tx),
+            shutdown_rx,
+            shutdown_tx: Some(shutdown_tx),
             socket,
         }
     }
@@ -131,6 +145,7 @@ impl Driver {
         addr: &SocketAddr,
         connection_tx: mpsc::Sender<Result<Segment, io::Error>>,
         segment_rx: mpsc::Receiver<(Bytes, SocketAddr)>,
+        shutdown_rx: mpsc::UnboundedReceiver<SocketAddr>,
     ) -> Self {
         let conn_map = {
             let mut map = HashMap::with_capacity(1);
@@ -147,6 +162,8 @@ impl Driver {
             recv_buf: BytesMut::with_capacity(UDP_DGRAM_SIZE),
             segment_rx,
             segment_tx: None,
+            shutdown_rx,
+            shutdown_tx: None,
             socket,
         }
     }
@@ -234,10 +251,20 @@ impl Driver {
                 .as_ref()
                 .cloned()
                 .expect("missing segment tx");
+            let shutdown_tx = self
+                .shutdown_tx
+                .as_ref()
+                .cloned()
+                .expect("missing segment tx");
 
             trace!("setting up accept future");
 
-            let stream = Accept::from_listener(addr, segment_rx, segment_tx);
+            let stream = Accept::from_listener(
+                addr,
+                segment_rx,
+                segment_tx,
+                shutdown_tx,
+            );
             self.new_conn_fut = Some(new_conn.send((stream, addr)));
         } else {
             // The segment is invalid and we don't know where it's coming from,
@@ -277,6 +304,17 @@ impl Driver {
 
         self.currently_sending = None;
         Ok(Async::Ready(()))
+    }
+
+    /// Polls for any streams that have shut down to remove them from the
+    /// connection table.
+    fn poll_shutdown(&mut self) -> Poll<(), ()> {
+        loop {
+            match self.shutdown_rx.poll().expect("mpsc::Receiver failure") {
+                Async::Ready(Some(addr)) => self.conn_map.remove(&addr),
+                _ => return Ok(Async::NotReady),
+            };
+        }
     }
 
     /// Asynchronously reads a segment off the UDP socket.
@@ -329,9 +367,11 @@ impl Future for Driver {
                 return Ok(Async::Ready(()));
             }
 
-            // Poll until both return NotReady
-            match (self.poll_recv()?, self.poll_send()?) {
-                (Async::NotReady, Async::NotReady) => return Ok(Async::NotReady),
+            // Poll until everything returns NotReady
+            match (self.poll_shutdown()?, self.poll_recv()?, self.poll_send()?) {
+                (Async::NotReady, Async::NotReady, Async::NotReady) => {
+                    return Ok(Async::NotReady)
+                }
                 _ => {}
             }
         }

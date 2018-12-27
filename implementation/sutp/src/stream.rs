@@ -56,6 +56,9 @@ pub struct SutpStream {
     /// received properly.
     nak_set: BTreeSet<u32>,
 
+    /// The channel to push the shutdown of this stream to.
+    on_shutdown: mpsc::UnboundedSender<SocketAddr>,
+
     /// The sparse buffer for bringing segments into their proper order.
     order_buf: Window<Segment>,
 
@@ -151,6 +154,7 @@ impl SutpStream {
     pub(crate) fn create(
         recv: mpsc::Receiver<Result<Segment, Error>>,
         send: mpsc::Sender<(Bytes, SocketAddr)>,
+        on_shutdown: mpsc::UnboundedSender<SocketAddr>,
         local_seq_no: u32,
         remote_addr: SocketAddr,
         remote_seq_no: u32,
@@ -162,6 +166,7 @@ impl SutpStream {
             highest_consecutive_remote_seq_no: Wrapping(remote_seq_no),
             local_seq_no: Wrapping(local_seq_no),
             nak_set: BTreeSet::new(),
+            on_shutdown,
             order_buf: Window::with_lowest_key(
                 BUF_SIZE / OUTGOING_PAYLOAD_SIZE,
                 remote_seq_no as usize,
@@ -309,7 +314,7 @@ impl SutpStream {
             }
 
             self.poll_process()?
-        } { }
+        } {}
 
         Ok(Async::Ready(()))
     }
@@ -364,7 +369,11 @@ impl SutpStream {
         let mut has_seen_just_sack = true;
 
         for segment in self.order_buf.drain() {
-            trace!("processing segment {} with {:?}", segment.seq_no, segment.chunks);
+            trace!(
+                "processing segment {} with {:?}",
+                segment.seq_no,
+                segment.chunks
+            );
 
             highest_seq_no = Some(segment.seq_no);
             has_seen_just_sack = segment.is_just_sack();
@@ -433,7 +442,8 @@ impl SutpStream {
             // data loss by segments arriving in the wrong order preventing earlier
             // segments that have not yet been received to be inserted.
             if self.order_buf.is_empty() {
-                self.order_buf.set_lowest_key(seq_no.wrapping_add(1) as usize)
+                self.order_buf
+                    .set_lowest_key(seq_no.wrapping_add(1) as usize)
             }
         }
 
@@ -449,7 +459,11 @@ impl SutpStream {
                 ))
                 .build();
 
-            trace!("enqueueing ack segment {} for {:?}", ack_nak_segment.seq_no, ack_nak_segment.chunks);
+            trace!(
+                "enqueueing ack segment {} for {:?}",
+                ack_nak_segment.seq_no,
+                ack_nak_segment.chunks
+            );
             self.enqueue_outgoing(ack_nak_segment);
         }
 
@@ -566,6 +580,13 @@ impl AsyncWrite for SutpStream {
                 }
             }
         }
+    }
+}
+
+impl Drop for SutpStream {
+    fn drop(&mut self) {
+        self.recv.close();
+        let _ = self.on_shutdown.unbounded_send(self.remote_addr);
     }
 }
 
