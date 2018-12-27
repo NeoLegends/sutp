@@ -212,7 +212,8 @@ impl SutpStream {
         copy_count
     }
 
-    /// Gets a fresh sequence number.
+    /// Gets a fresh sequence number by first incrementing the stored one and
+    /// returning the incremented value.
     fn get_seq_no(&mut self) -> u32 {
         self.local_seq_no += ONE;
         self.local_seq_no.0
