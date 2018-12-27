@@ -291,7 +291,9 @@ impl Segment {
     /// Reads a segment from the given buffer w/o verifying the CRC signature.
     fn read_from_raw(r: &mut Bytes) -> io::Result<Segment> {
         let mut buf = r.as_ref().into_buf();
-        assert_size!(buf, mem::size_of::<u32>() * 2);
+        if buf.remaining() < mem::size_of::<u32>() * 2 {
+            return Err(io::ErrorKind::UnexpectedEof.into());
+        }
 
         let seq_no = buf.get_u32_be();
         let window_size = buf.get_u32_be();

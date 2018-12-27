@@ -20,6 +20,16 @@ use tokio::{
     timer::Delay,
 };
 
+/// Converts from Async::NotReady to ErrorKind::WouldBlock.
+macro_rules! try_would_block {
+    ($val:expr) => {{
+        match $val? {
+            Async::Ready(result) => Ok(result),
+            Async::NotReady => Err(ErrorKind::WouldBlock.into()),
+        }
+    }};
+}
+
 /// The default size of the receiving and sending buffers.
 const BUF_SIZE: usize = 1024 * 1024; // 1MB
 

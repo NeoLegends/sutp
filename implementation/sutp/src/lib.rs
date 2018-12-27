@@ -1,7 +1,3 @@
-// Macros need to lexically come before the rest to be usable
-#[macro_use]
-mod macros;
-
 mod accept;
 mod chunk;
 mod connect;

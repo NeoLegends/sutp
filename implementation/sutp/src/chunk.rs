@@ -9,6 +9,16 @@ use std::{
     mem, u16,
 };
 
+/// Asserts that the given buffer has enough remaining capacity and
+/// otherwise returns UnexpectedEof.
+macro_rules! assert_size {
+    ($buf:expr, $size:expr) => {{
+        if $buf.remaining() < $size {
+            return Err(::std::io::ErrorKind::UnexpectedEof.into());
+        }
+    }};
+}
+
 /// A list of supported compression algorithms in order of preference.
 pub const SUPPORTED_COMPRESSION_ALGS: [CompressionAlgorithm; 2] =
     [CompressionAlgorithm::Snappy, CompressionAlgorithm::Gzip];
