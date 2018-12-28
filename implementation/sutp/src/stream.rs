@@ -371,7 +371,7 @@ impl SutpStream {
 
         // Track if we have seen other chunks than SACK chunks, because segments
         // containing just these won't be ACKed.
-        let mut has_seen_just_sack = true;
+        let mut needs_ack = false;
 
         for segment in self.order_buf.drain() {
             trace!(
@@ -381,7 +381,7 @@ impl SutpStream {
             );
 
             highest_seq_no = Some(segment.seq_no);
-            has_seen_just_sack = segment.is_just_sack();
+            needs_ack |= segment.needs_ack();
 
             // Remove segment from NAK list since it's been successfully received
             self.nak_set.remove(&segment.seq_no);
@@ -453,7 +453,7 @@ impl SutpStream {
         }
 
         // Build up an ACK / NAK segment
-        if !has_seen_just_sack {
+        if needs_ack {
             let nak_list = self.nak_set.iter().cloned().collect();
             let ack_nak_segment = SegmentBuilder::new()
                 .seq_no(self.get_seq_no())

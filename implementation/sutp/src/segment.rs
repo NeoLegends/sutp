@@ -114,11 +114,6 @@ impl Segment {
         chunk_len + BINARY_OVERHEAD
     }
 
-    /// Determines if the segment contains just SACK chunks.
-    pub fn is_just_sack(&self) -> bool {
-        self.chunks.iter().all(|ch| ch.is_sack())
-    }
-
     /// Checks whether the segment can be classified as a "SYN->" or "SYN 1"
     /// segment. That is, the very first segment on the wire used to intiate
     /// a connection.
@@ -136,6 +131,15 @@ impl Segment {
         let contains_syn = self.chunks.iter().any(|ch| ch.is_syn());
 
         contains_syn && self.ack(syn1_seq_no).is_ack()
+    }
+
+    /// Determines if the segment needs to be ACKed.
+    ///
+    /// Segments containing just SACK chunks or FIN chunks don't need an ack.
+    pub fn needs_ack(&self) -> bool {
+        self.chunks.iter().all(|ch| ch.is_sack())
+            || self.chunks.iter().all(|ch| ch.is_fin())
+            || self.chunks.iter().all(|ch| ch.is_abrt())
     }
 
     /// Selects the most-preferred supported compression algorithm,
