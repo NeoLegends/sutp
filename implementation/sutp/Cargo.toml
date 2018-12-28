@@ -10,8 +10,8 @@ bytes = "0.4.11"
 flate2 = "1.0.5"
 futures = "0.1.25"
 lazy_static = "1.2.0"
-rand = "0.6.1"
 log = "0.4.6"
+rand = "0.6.1"
 tokio = "0.1.13"
 
 [dev-dependencies]
