@@ -1,9 +1,10 @@
+mod common;
+
+use crate::common::run_timed;
 use env_logger;
 use futures::prelude::*;
 use std::{
-    fmt::Debug,
     io::{Error, ErrorKind},
-    sync::mpsc,
     thread,
     time::Duration,
 };
@@ -15,24 +16,6 @@ use tokio::{
 
 const TEST_STRING: &str = "Hello World";
 const TEST_STRING_BIN: &[u8] = b"Hello World";
-
-fn run_timed<
-    E: 'static + Debug + Send,
-    F: 'static + Send + FnOnce(mpsc::Sender<E>),
->(
-    duration: Duration,
-    func: F,
-) {
-    let (err_tx, err_rx) = mpsc::channel();
-
-    func(err_tx);
-
-    match err_rx.recv_timeout(duration) {
-        Ok(err) => panic!("{:?}", err),
-        Err(mpsc::RecvTimeoutError::Timeout) => panic!("timed out"),
-        Err(mpsc::RecvTimeoutError::Disconnected) => {}
-    }
-}
 
 #[test]
 fn hello_world_cts() {
