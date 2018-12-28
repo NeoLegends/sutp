@@ -28,8 +28,6 @@ pub struct Incoming {
 /// than the listener itself.
 #[derive(Debug)]
 pub struct SutpListener {
-    // This internally consists just of two channels that connect to the driver.
-    // Both channels can be used asynchronously as not to block the event loop.
     /// A channel receiving newly opened connections.
     conn_recv: mpsc::Receiver<(Accept, SocketAddr)>,
 
@@ -120,8 +118,6 @@ impl SutpListener {
         self.spawn_driver();
         self.poll_io_err()?;
 
-        // Channel errors can only occur when the sender has been dropped, and
-        // this only happens on hard I/O errors.
         match self.conn_recv.poll().expect(RECEIVER_ERROR) {
             // We're given IO errors as channel items
             Async::Ready(Some(conn)) => Ok(Async::Ready(conn)),
