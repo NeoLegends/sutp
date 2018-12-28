@@ -218,15 +218,15 @@ impl Driver {
             // We need to check whether the given segment is a SYN-> segment
             // and actually initialize the new connection.
 
-            if maybe_segment.is_err() {
-                trace!("discarding segment because its invalid");
-                self.new_conn = Some(new_conn);
+            let segment = match maybe_segment {
+                Ok(segment) => segment,
+                Err(e) => {
+                    trace!("discarding invalid segment due to {:?}", e);
+                    self.new_conn = Some(new_conn);
 
-                return Ok(Async::Ready(()));
-            }
-
-            // Safe due to check above
-            let segment = maybe_segment.unwrap();
+                    return Ok(Async::Ready(()));
+                }
+            };
 
             if !segment.is_syn1() {
                 trace!("discarding init segment because it's not SYN->");
