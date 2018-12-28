@@ -38,6 +38,9 @@ pub struct SutpListener {
 
     /// A channel receiving hard I/O errors.
     io_err: oneshot::Receiver<io::Error>,
+
+    /// The address the UDP socket / driver is locally bound to.
+    local_addr: SocketAddr,
 }
 
 impl Incoming {
@@ -75,20 +78,32 @@ impl SutpListener {
     }
 
     /// Binds the listener to the given UDP socket.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the given UDP socket isn't bound yet.
     pub fn from_socket(socket: UdpSocket) -> Self {
         let (io_err_tx, io_err_rx) = oneshot::channel();
         let (new_conn_tx, new_conn_rx) = mpsc::channel(NEW_CONN_QUEUE_SIZE);
+
+        let addr = socket.local_addr().expect("UdpSocket::local_addr failed");
 
         Self {
             conn_recv: new_conn_rx,
             driver: Some(Driver::new(socket, io_err_tx, new_conn_tx)),
             io_err: io_err_rx,
+            local_addr: addr,
         }
     }
 
     /// Converts this listener into a stream of incoming connections.
     pub fn incoming(self) -> Incoming {
         Incoming { listener: self }
+    }
+
+    /// Gets the address of the local network interface this listener is bound to.
+    pub fn local_addr(&self) -> SocketAddr {
+        self.local_addr
     }
 
     /// Asynchronously accepts a new connection. On success, returns the
