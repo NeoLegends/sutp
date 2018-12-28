@@ -9,3 +9,4 @@ env_logger = "0.6.0"
 futures = "0.1.25"
 sutp = { path = "../sutp" }
 tokio = "0.1.13"
+log = "0.4.6"

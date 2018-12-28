@@ -1,8 +1,9 @@
 use futures::{Future, Stream};
+use log::{error, info};
 use sutp::SutpListener;
 use tokio::{
     self,
-    io::{read_to_end, shutdown, write_all},
+    io::{flush, read_exact, shutdown, write_all},
 };
 
 fn main() {
@@ -14,24 +15,25 @@ fn main() {
         .incoming()
         .map_err(|e| panic!("accept error: {}", e))
         .for_each(|(conn, addr)| {
-            println!("Handling conn from {}.", addr);
+            info!("Handling conn from {}.", addr);
 
             let fut = conn
                 .and_then(|stream| {
-                    println!("accepted, reading to end...");
-                    read_to_end(stream, Vec::new())
+                    info!("accepted, reading to end...");
+                    read_exact(stream, vec![0; 5])
                 })
                 .and_then(|(stream, buf)| {
-                    println!(
+                    info!(
                         "received: {}, forwarding...",
                         String::from_utf8_lossy(&buf)
                     );
                     write_all(stream, buf)
                 })
-                .and_then(|(stream, _)| shutdown(stream))
-                .map(move |_| println!("Connection to {} shut down.", addr))
+                .and_then(|(stream, _)| flush(stream))
+                .and_then(shutdown)
+                .map(move |_| info!("Connection to {} shut down.", addr))
                 .or_else(|e| {
-                    eprintln!("stream err: {:?}", e);
+                    error!("stream err: {:?}", e);
                     Ok(())
                 });
 

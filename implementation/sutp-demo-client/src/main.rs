@@ -1,8 +1,9 @@
 use futures::Future;
+use log::info;
 use sutp::SutpStream;
 use tokio::{
     self,
-    io::{flush, shutdown, write_all},
+    io::{flush, read_to_end, shutdown, write_all},
 };
 
 fn main() {
@@ -10,11 +11,15 @@ fn main() {
 
     let addr = "127.0.0.1:12345".parse().unwrap();
     let fut = SutpStream::connect(&addr)
-        .and_then(|stream| write_all(stream, &b"Hello World!"))
+        .and_then(|stream| write_all(stream, b"Hello"))
         .and_then(|(stream, _)| flush(stream))
-        .and_then(shutdown)
+        .and_then(|stream| read_to_end(stream, Vec::new()))
+        .and_then(|(stream, buf)| {
+            info!("Received back '{}'.", String::from_utf8(buf).unwrap());
+            shutdown(stream)
+        })
         .map_err(|e| panic!("err: {:?}", e))
-        .map(|_| println!("done"));
+        .map(|_| info!("done"));
 
     tokio::run(fut);
 }
