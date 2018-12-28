@@ -99,7 +99,7 @@ impl Segment {
                     } else {
                         None
                     }
-                },
+                }
                 _ => None,
             })
             .next()
@@ -149,7 +149,7 @@ impl Segment {
             .iter()
             .filter_map(|ch| match ch {
                 Chunk::CompressionNegotiation(list) => Some(list),
-                _ => None
+                _ => None,
             })
             .flat_map(|list| list)
             .find(|alg| alg.is_known())
