@@ -410,6 +410,7 @@ impl SutpStream {
                     Chunk::Abort => {
                         trace!("received ABRT chunk");
 
+                        self.outgoing_segments.clear();
                         self.r_buf.clear();
                         self.w_buf.clear();
 
