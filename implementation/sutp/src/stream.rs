@@ -277,7 +277,7 @@ impl SutpStream {
         self.assert_can_flush()?;
 
         while {
-            self.prepare_segments();
+            self.prepare_payload_segments();
 
             // Gah I hate this style, but functional combinators don't allow
             // modifications to the control flow of this function and we need
@@ -481,7 +481,7 @@ impl SutpStream {
     ///
     /// Note: This gives us packet bundling "for free", at least depending on
     /// how often the user flushes the stream.
-    fn prepare_segments(&mut self) {
+    fn prepare_payload_segments(&mut self) {
         while !self.w_buf.is_empty() {
             // Get the data we want to send out with a single segment.
             let num_payload_bytes = self.w_buf.len().min(OUTGOING_PAYLOAD_SIZE);
