@@ -13,3 +13,6 @@ lazy_static = "1.2.0"
 rand = "0.6.1"
 log = "0.4.6"
 tokio = "0.1.13"
+
+[dev-dependencies]
+env_logger = "0.6.0"
