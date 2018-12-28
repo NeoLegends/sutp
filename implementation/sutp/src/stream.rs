@@ -239,7 +239,7 @@ impl SutpStream {
                 _ => {}
             }
 
-            self.poll_process()?
+            self.poll_process()?.is_ready()
         } {}
 
         Ok(if !self.r_buf.is_empty() {
@@ -279,61 +279,23 @@ impl SutpStream {
         while {
             self.prepare_payload_segments();
 
-            // Gah I hate this style, but functional combinators don't allow
-            // modifications to the control flow of this function and we need
-            // those to handle erros and non-readyness.
-            for outgoing in self.outgoing_segments.values_mut() {
-                match outgoing.should_send() {
-                    Ok(true) => {}
-                    Ok(false) => continue,
-                    Err(e) => {
-                        self.state = StreamState::Closed;
-                        return Err(e);
-                    }
-                }
-                if (self.remote_window_size as usize) < outgoing.data.len() {
-                    break;
-                }
-
-                // Send the segment to the driver
-                loop {
-                    let poll_res = self
-                        .send
-                        .start_send((outgoing.data.clone(), self.remote_addr))
-                        .map_err(|_| Error::new(ErrorKind::Other, DRIVER_AWAY));
-
-                    if poll_res?.is_ready() {
-                        break;
-                    }
-
-                    try_ready!({
-                        self.send
-                            .poll_complete()
-                            .map_err(|_| Error::new(ErrorKind::Other, DRIVER_AWAY))
-                    });
-                }
-
-                outgoing.start_timers();
-                self.remote_window_size
-                    .saturating_sub(outgoing.data.len() as u32);
-            }
-
-            self.poll_process()?
+            self.poll_process()?.is_ready()
         } {}
 
         Ok(Async::Ready(()))
     }
 
     /// Asynchronously drives the protocol automaton receiving new segments,
-    /// preparing ACK segments for received ones, etc.
-    fn poll_process(&mut self) -> Result<bool, io::Error> {
-        let mut has_recvd_segments = false;
+    /// preparing ACK segments for received ones, and sending out any already-
+    /// enqueued segments.
+    fn poll_process(&mut self) -> Poll<(), io::Error> {
+        let mut has_received_or_sent = false;
 
         loop {
             // Check for new segments on the channel
             let segment = match self.recv.poll().expect(RECEIVER_ERROR) {
                 Async::Ready(Some(Ok(segment))) => {
-                    has_recvd_segments = true;
+                    has_received_or_sent = true;
                     segment
                 }
                 Async::Ready(Some(Err(e))) => {
@@ -473,7 +435,52 @@ impl SutpStream {
             self.enqueue_outgoing(&ack_nak_segment);
         }
 
-        Ok(has_recvd_segments)
+        // Gah I hate this style, but functional combinators don't allow
+        // modifications to the control flow of this function and we need
+        // those to handle erros and non-readyness.
+        for outgoing in self.outgoing_segments.values_mut() {
+            match outgoing.should_send() {
+                Ok(true) => {}
+                Ok(false) => continue,
+                Err(e) => {
+                    self.state = StreamState::Closed;
+                    return Err(e);
+                }
+            }
+            if (self.remote_window_size as usize) < outgoing.data.len() {
+                break;
+            }
+
+            has_received_or_sent = true;
+
+            // Send the segment to the driver
+            loop {
+                let poll_res = self
+                    .send
+                    .start_send((outgoing.data.clone(), self.remote_addr))
+                    .map_err(|_| Error::new(ErrorKind::Other, DRIVER_AWAY));
+
+                if poll_res?.is_ready() {
+                    break;
+                }
+
+                try_ready!({
+                    self.send
+                        .poll_complete()
+                        .map_err(|_| Error::new(ErrorKind::Other, DRIVER_AWAY))
+                });
+            }
+
+            outgoing.start_timers();
+            self.remote_window_size
+                .saturating_sub(outgoing.data.len() as u32);
+        }
+
+        Ok(if has_received_or_sent {
+            Async::Ready(())
+        } else {
+            Async::NotReady
+        })
     }
 
     /// Creates segments of optimal size out of the buffer that contains
