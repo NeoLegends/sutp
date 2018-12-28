@@ -39,6 +39,11 @@ pub struct Accept {
     /// The channel of incoming segments.
     recv: Option<mpsc::Receiver<Result<Segment, io::Error>>>,
 
+    /// The sending side of the channel of incoming segments.
+    ///
+    /// Used for re-enqueueing the first segment for processing in the stream.
+    recv_tx: mpsc::Sender<Result<Segment, io::Error>>,
+
     /// The address of the remote endpoint.
     remote_addr: SocketAddr,
 
@@ -72,6 +77,7 @@ impl Accept {
     pub(crate) fn from_listener(
         addr: SocketAddr,
         recv: mpsc::Receiver<Result<Segment, Error>>,
+        recv_tx: mpsc::Sender<Result<Segment, Error>>,
         send: mpsc::Sender<(Bytes, SocketAddr)>,
         on_shutdown: mpsc::UnboundedSender<SocketAddr>,
     ) -> Self {
@@ -81,6 +87,7 @@ impl Accept {
             conn_timeout: None,
             local_seq_no: rand::random(),
             recv: Some(recv),
+            recv_tx,
             remote_addr: addr,
             remote_seq_no: 0,
             send,
@@ -245,34 +252,17 @@ impl Future for Accept {
                     let seq_no = ack_segment.seq_no;
                     let window_size = ack_segment.window_size;
 
-                    // Use a temporary channel to put the received segment back
-                    // into a channel. This simplifies the implementation in the
-                    // stream.
-                    let (tx, rx) = {
-                        let (mut tx, rx) = mpsc::channel(0);
-
-                        // this can only fail when allocations fail
-                        tx.try_send(Ok(ack_segment)).unwrap();
-
-                        let tx = tx.sink_map_err(|_| {
-                            trace!("intermediate channel dropped")
-                        });
-
-                        (tx, rx)
-                    };
-                    tokio::spawn(
-                        self.recv
-                            .take()
-                            .expect(POLLED_TWICE)
-                            .forward(tx)
-                            .map(|_| ()),
-                    );
+                    // Put the received segment back into the channel. This
+                    // simplifies the implementation in the stream.
+                    self.recv_tx
+                        .try_send(Ok(ack_segment))
+                        .expect("reenqueue failure");
 
                     trace!("building up stream");
 
                     // Build up the actual stream and resolve the future
                     let stream = SutpStream::create(
-                        rx,
+                        self.recv.take().expect(POLLED_TWICE),
                         self.send.clone(),
                         self.shutdown_tx.clone(),
                         self.local_seq_no,

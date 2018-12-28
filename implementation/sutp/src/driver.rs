@@ -237,10 +237,15 @@ impl Driver {
 
             trace!("setting up accept future");
 
-            let (segment_tx, segment_rx, shutdown_tx) =
+            let (segment_tx, from_driver_tx, from_driver_rx, shutdown_tx) =
                 self.prepare_channels(addr, segment);
-            let stream =
-                Accept::from_listener(addr, segment_rx, segment_tx, shutdown_tx);
+            let stream = Accept::from_listener(
+                addr,
+                from_driver_rx,
+                from_driver_tx,
+                segment_tx,
+                shutdown_tx,
+            );
 
             self.new_conn_fut = Some(new_conn.send((stream, addr)));
         } else {
@@ -303,20 +308,19 @@ impl Driver {
         init_sgmt: Segment,
     ) -> (
         mpsc::Sender<(Bytes, SocketAddr)>,
+        mpsc::Sender<Result<Segment, io::Error>>,
         mpsc::Receiver<Result<Segment, io::Error>>,
         mpsc::UnboundedSender<SocketAddr>,
     ) {
-        let segment_rx = {
-            let (mut tx, rx) = mpsc::channel(STREAM_SEGMENT_QUEUE_SIZE);
+        let (mut from_driver_tx, from_driver_rx) =
+            mpsc::channel(STREAM_SEGMENT_QUEUE_SIZE);
 
-            // Queue initial segment for processing in the SutpStream
-            // This doesn't fail, only when the allocation fails.
-            tx.try_send(Ok(init_sgmt)).unwrap();
+        // Queue initial segment for processing in the SutpStream
+        // This doesn't fail, only when the allocation fails.
+        from_driver_tx.try_send(Ok(init_sgmt)).unwrap();
 
-            self.conn_map.insert(address, tx);
+        self.conn_map.insert(address, from_driver_tx.clone());
 
-            rx
-        };
         let segment_tx = self
             .segment_tx
             .as_ref()
@@ -328,7 +332,7 @@ impl Driver {
             .cloned()
             .expect("missing segment tx");
 
-        (segment_tx, segment_rx, shutdown_tx)
+        (segment_tx, from_driver_tx, from_driver_rx, shutdown_tx)
     }
 
     /// Asynchronously reads a segment off the UDP socket.
