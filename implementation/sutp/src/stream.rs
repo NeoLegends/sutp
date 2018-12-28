@@ -603,6 +603,7 @@ impl AsyncWrite for SutpStream {
 impl Drop for SutpStream {
     fn drop(&mut self) {
         self.recv.close();
+        let _ = self.send.close();
         let _ = self.on_shutdown.unbounded_send(self.remote_addr);
     }
 }
