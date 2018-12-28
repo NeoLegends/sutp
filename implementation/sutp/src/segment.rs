@@ -137,9 +137,14 @@ impl Segment {
     ///
     /// Segments containing just SACK chunks or FIN chunks don't need an ack.
     pub fn needs_ack(&self) -> bool {
-        self.chunks.iter().all(|ch| ch.is_sack())
-            || self.chunks.iter().all(|ch| ch.is_fin())
-            || self.chunks.iter().all(|ch| ch.is_abrt())
+        self.chunks.iter().any(|ch| match ch {
+            Chunk::CompressionNegotiation(_) => true,
+            Chunk::Payload(_) => true,
+            Chunk::SecurityFlag(_) => true,
+            Chunk::Syn => true,
+            Chunk::Unknown(_, _) => true,
+            _ => false,
+        })
     }
 
     /// Selects the most-preferred supported compression algorithm,
