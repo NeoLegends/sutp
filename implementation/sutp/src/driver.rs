@@ -349,7 +349,7 @@ impl Driver {
         let (nread, addr) = unsafe {
             self.recv_buf.set_len(UDP_DGRAM_SIZE);
             let (nread, addr) =
-                try_ready!({ self.socket.poll_recv_from(self.recv_buf.as_mut()) });
+                try_ready!(self.socket.poll_recv_from(self.recv_buf.as_mut()));
             self.recv_buf.set_len(nread);
 
             (nread, addr)
