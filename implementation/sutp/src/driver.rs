@@ -239,7 +239,7 @@ impl Driver {
 
             let (segment_tx, from_driver_tx, from_driver_rx, shutdown_tx) =
                 self.prepare_channels(addr, segment);
-            let stream = Accept::from_listener(
+            let accept = Accept::from_listener(
                 addr,
                 from_driver_rx,
                 from_driver_tx,
@@ -247,7 +247,7 @@ impl Driver {
                 shutdown_tx,
             );
 
-            self.new_conn_fut = Some(new_conn.send((stream, addr)));
+            self.new_conn_fut = Some(new_conn.send((accept, addr)));
         } else {
             // The segment is invalid and we don't know where it's coming from,
             // or the listener has been dropped and we cannot accept new
@@ -315,7 +315,7 @@ impl Driver {
         let (mut from_driver_tx, from_driver_rx) =
             mpsc::channel(STREAM_SEGMENT_QUEUE_SIZE);
 
-        // Queue initial segment for processing in the SutpStream
+        // Queue initial segment for processing in the accept future.
         // This doesn't fail, only when the allocation fails.
         from_driver_tx.try_send(Ok(init_sgmt)).unwrap();
 
