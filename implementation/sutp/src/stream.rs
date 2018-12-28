@@ -227,24 +227,31 @@ impl SutpStream {
 
     /// Asynchronously tries to read data off the stream.
     fn poll_read(&mut self, buf: &mut [u8]) -> Poll<usize, io::Error> {
-        // If we have been closed, read just what's left, and don't process anything
-        // anymore if a FIN has been received.
+        if buf.is_empty() {
+            return Ok(Async::Ready(0));
+        } else if self.r_buf.is_empty() && self.state == StreamState::Closed {
+            return Err(ErrorKind::NotConnected.into());
+        }
 
         while self.poll_process()? {
+            if !self.r_buf.is_empty() {
+                continue;
+            }
+
             match self.state {
-                StreamState::Closed if self.r_buf.is_empty() => {
-                    return Err(ErrorKind::NotConnected.into())
-                }
-                StreamState::FinRecvd | StreamState::LastBreath
-                    if self.r_buf.is_empty() =>
-                {
+                StreamState::Closed => return Ok(Async::Ready(self.fill_buf(buf))),
+                StreamState::FinRecvd | StreamState::LastBreath => {
                     return Ok(Async::Ready(0))
                 }
                 _ => {}
             }
         }
 
-        Ok(Async::Ready(self.fill_buf(buf)))
+        Ok(if !self.r_buf.is_empty() {
+            Async::Ready(self.fill_buf(buf))
+        } else {
+            Async::NotReady
+        })
     }
 
     /// Asynchronously tries to write data to the stream.
