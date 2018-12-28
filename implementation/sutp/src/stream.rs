@@ -523,6 +523,12 @@ impl SutpStream {
 
     /// Serializes the given segment and enqueues it for sending.
     fn enqueue_outgoing(&mut self, segment: &Segment) {
+        trace!(
+            "enqueueing segment {} with {:?}",
+            segment.seq_no,
+            segment.chunks,
+        );
+
         self.segment_buf.reserve(segment.binary_len());
 
         segment
