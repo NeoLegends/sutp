@@ -589,7 +589,7 @@ impl AsyncWrite for SutpStream {
                     trace!("shutdown: fin sent | last breath");
 
                     try_ready!(self.poll_flush());
-                    return Ok(Async::NotReady);
+                    self.state = StreamState::Closed;
                 }
                 StreamState::Closed => {
                     trace!("shutdown: closed");
