@@ -3,6 +3,7 @@ mod common;
 use crate::common::run_timed;
 use env_logger;
 use futures::prelude::*;
+use log::info;
 use std::{
     io::{Error, ErrorKind},
     thread,
@@ -22,11 +23,10 @@ fn hello_world_cts() {
     let _ = env_logger::try_init();
 
     run_timed(Duration::from_secs(5), |err_tx| {
-        let srv_addr = "0.0.0.0:12350".parse().unwrap();
-        let client_addr = "127.0.0.1:12350".parse().unwrap();
+        let addr = "127.0.0.1:12350".parse().unwrap();
 
         let err_tx_2 = err_tx.clone();
-        let fut_srv = SutpListener::bind(&srv_addr)
+        let fut_srv = SutpListener::bind(&addr)
             .unwrap()
             .incoming()
             .take(1)
@@ -54,7 +54,7 @@ fn hello_world_cts() {
                     .map(|_| ())
             });
 
-        let fut_client = SutpStream::connect(&client_addr)
+        let fut_client = SutpStream::connect(&addr)
             .and_then(|stream| write_all(stream, TEST_STRING_BIN))
             .and_then(|(stream, _)| shutdown(stream));
 
@@ -72,23 +72,31 @@ fn hello_world_stc() {
     let _ = env_logger::try_init();
 
     run_timed(Duration::from_secs(5), |err_tx| {
-        let srv_addr = "0.0.0.0:12351".parse().unwrap();
-        let client_addr = "127.0.0.1:12351".parse().unwrap();
+        let addr = "127.0.0.1:12351".parse().unwrap();
 
-        let fut_srv = SutpListener::bind(&srv_addr)
+        let fut_srv = SutpListener::bind(&addr)
             .unwrap()
             .incoming()
             .take(1)
             .map_err(|e| panic!("accept error: {:?}", e))
             .for_each(|(conn, _)| {
-                conn.and_then(|stream| write_all(stream, TEST_STRING_BIN))
+                info!("server: accepting conn");
+
+                conn
+                    .inspect(|_| {
+                        info!("server: accepted, writing {:?}", TEST_STRING_BIN)
+                    })
+                    .and_then(|stream| write_all(stream, TEST_STRING_BIN))
+                    .inspect(|_| info!("server: written, shutting down."))
                     .and_then(|(stream, _)| shutdown(stream))
-                    .map(|_| ())
+                    .map(|_| info!("server: shut down."))
             });
 
         let err_tx_2 = err_tx.clone();
-        let fut_client = SutpStream::connect(&client_addr)
+        let fut_client = SutpStream::connect(&addr)
+            .inspect(|_| info!("client: connected, reading to end."))
             .and_then(|stream| read_to_end(stream, Vec::new()))
+            .inspect(|_| info!("client: parsing and shutting down"))
             .and_then(move |(stream, buf)| {
                 let deserialized = String::from_utf8_lossy(&buf);
 
@@ -104,7 +112,8 @@ fn hello_world_stc() {
                 }
 
                 shutdown(stream)
-            });
+            })
+            .inspect(|_| info!("client: shut down."));
 
         let joined = fut_srv
             .join(fut_client)
