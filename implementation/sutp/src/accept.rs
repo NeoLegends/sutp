@@ -241,7 +241,8 @@ impl Future for Accept {
                         self.state = State::Start;
                         continue;
                     } else if ack_segment.ack(self.local_seq_no).is_nak() {
-                        // Retry if the other side didn't receive the segment properly
+                        // Retry if the other side didn't receive the segment
+                        // properly
 
                         debug!("syn2 NAKed {:?}", ack_segment.chunks);
 
