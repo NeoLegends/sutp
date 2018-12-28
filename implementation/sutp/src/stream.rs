@@ -240,7 +240,7 @@ impl SutpStream {
             }
 
             self.poll_process()?
-        } { }
+        } {}
 
         Ok(if !self.r_buf.is_empty() {
             Async::Ready(self.fill_buf(buf))
