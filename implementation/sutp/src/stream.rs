@@ -281,8 +281,6 @@ impl SutpStream {
     fn poll_flush(&mut self) -> Poll<(), io::Error> {
         self.assert_can_flush()?;
 
-        trace!("flushing");
-
         while {
             self.prepare_segments();
 
