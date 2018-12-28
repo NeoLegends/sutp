@@ -144,11 +144,11 @@ impl Segment {
     pub fn select_compression_alg(&self) -> Option<CompressionAlgorithm> {
         self.chunks
             .iter()
-            .filter(|ch| ch.is_compression_negotiation())
-            .flat_map(|ch| match ch {
-                Chunk::CompressionNegotiation(list) => list,
-                _ => unreachable!(),
+            .filter_map(|ch| match ch {
+                Chunk::CompressionNegotiation(list) => Some(list),
+                _ => None
             })
+            .flat_map(|list| list)
             .find(|alg| alg.is_known())
             .cloned()
     }
