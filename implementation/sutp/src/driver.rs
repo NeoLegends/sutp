@@ -205,6 +205,7 @@ impl Driver {
             match conn.try_send(maybe_segment) {
                 Ok(_) => {}
                 Err(ref e) if e.is_disconnected() => {
+                    trace!("removing disconnected stream to {}", addr);
                     self.conn_map.remove(&addr);
                 }
                 Err(ref e) if e.is_full() => {
@@ -293,7 +294,10 @@ impl Driver {
     fn poll_shutdown(&mut self) -> Poll<(), ()> {
         loop {
             match self.shutdown_rx.poll().expect(RECEIVER_ERROR) {
-                Async::Ready(Some(addr)) => self.conn_map.remove(&addr),
+                Async::Ready(Some(addr)) => {
+                    trace!("removing shut down connection to {}", addr);
+                    self.conn_map.remove(&addr);
+                }
                 _ => return Ok(Async::NotReady),
             };
         }
@@ -382,6 +386,7 @@ impl Future for Driver {
             // we need to shut down, because everything has been dropped and
             // there's nothing to forward data to.
             if self.should_quit() {
+                trace!("driver shutting down");
                 return Ok(Async::Ready(()));
             }
 
