@@ -82,14 +82,13 @@ fn hello_world_stc() {
             .for_each(|(conn, _)| {
                 info!("server: accepting conn");
 
-                conn
-                    .inspect(|_| {
-                        info!("server: accepted, writing {:?}", TEST_STRING_BIN)
-                    })
-                    .and_then(|stream| write_all(stream, TEST_STRING_BIN))
-                    .inspect(|_| info!("server: written, shutting down."))
-                    .and_then(|(stream, _)| shutdown(stream))
-                    .map(|_| info!("server: shut down."))
+                conn.inspect(|_| {
+                    info!("server: accepted, writing {:?}", TEST_STRING_BIN)
+                })
+                .and_then(|stream| write_all(stream, TEST_STRING_BIN))
+                .inspect(|_| info!("server: written, shutting down."))
+                .and_then(|(stream, _)| shutdown(stream))
+                .map(|_| info!("server: shut down."))
             });
 
         let err_tx_2 = err_tx.clone();
