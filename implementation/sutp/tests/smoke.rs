@@ -39,8 +39,8 @@ fn hello_world_cts() {
     let _ = env_logger::try_init();
 
     run_timed(Duration::from_secs(5), |err_tx| {
-        let srv_addr = "0.0.0.0:12345".parse().unwrap();
-        let client_addr = "127.0.0.1:12345".parse().unwrap();
+        let srv_addr = "0.0.0.0:12350".parse().unwrap();
+        let client_addr = "127.0.0.1:12350".parse().unwrap();
 
         let err_tx_2 = err_tx.clone();
         let fut_srv = SutpListener::bind(&srv_addr)
@@ -89,8 +89,8 @@ fn hello_world_stc() {
     let _ = env_logger::try_init();
 
     run_timed(Duration::from_secs(5), |err_tx| {
-        let srv_addr = "0.0.0.0:12346".parse().unwrap();
-        let client_addr = "127.0.0.1:12346".parse().unwrap();
+        let srv_addr = "0.0.0.0:12351".parse().unwrap();
+        let client_addr = "127.0.0.1:12351".parse().unwrap();
 
         let fut_srv = SutpListener::bind(&srv_addr)
             .unwrap()
