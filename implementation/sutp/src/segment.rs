@@ -89,19 +89,18 @@ impl Segment {
         self.chunks
             .iter()
             .filter_map(|ch| match ch {
-                Chunk::Sack(ack, nak_list) => Some((ack, nak_list)),
-                _ => None,
-            })
-            .filter_map(|(&ack, nak_list)| {
-                let is_nakd = nak_list.iter().any(|&nak| other_seq_no == nak);
+                Chunk::Sack(ack, nak_list) => {
+                    let is_nakd = nak_list.iter().any(|&nak| other_seq_no == nak);
 
-                if is_nakd {
-                    Some(AckNak(Some(false)))
-                } else if ack >= other_seq_no {
-                    Some(AckNak(Some(true)))
-                } else {
-                    None
-                }
+                    if is_nakd {
+                        Some(AckNak(Some(false)))
+                    } else if *ack >= other_seq_no {
+                        Some(AckNak(Some(true)))
+                    } else {
+                        None
+                    }
+                },
+                _ => None,
             })
             .next()
             .unwrap_or(AckNak(None))
