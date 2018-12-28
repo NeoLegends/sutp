@@ -261,7 +261,7 @@ impl SutpStream {
         if buf.is_empty() {
             return Ok(Async::Ready(0));
         } else if self.w_buf.remaining_mut() == 0 {
-            return Ok(Async::NotReady);
+            try_ready!(self.poll_flush());
         }
 
         let copy_count = self.w_buf.remaining_mut().min(buf.len());
