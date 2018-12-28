@@ -1,0 +1,14 @@
+[package]
+name = "sutp-echo-server"
+version = "0.1.0"
+authors = ["Moritz Gunz <moritz.gunz@gmail.com>"]
+description = "A simple server echoing data transferred over SUTP on a configurable port."
+edition = "2018"
+
+[dependencies]
+clap = "2.32.0"
+env_logger = "0.6.0"
+futures = "0.1.25"
+log = "0.4.6"
+sutp = { path = "../sutp" }
+tokio = "0.1.13"

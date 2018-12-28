@@ -15,3 +15,5 @@ This project is built against the latest stable version of rust (1.31 at the tim
 Run `cargo build` or `cargo build --release` in this directory to compile the programs. The binaries can be found in `../target/{debug,release}`.
 
 Tests can be run with `cargo test` or `cargo test --release`. Running `cargo test` will also compile the project if anything has changed (or there haven't been any previous compiler runs).
+
+An echo server can be found in `./sutp-echo-server`. It is also built when building the entire project.
