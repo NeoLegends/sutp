@@ -51,8 +51,11 @@ pub struct SutpStream {
     /// the one we currently have.
     highest_consecutive_remote_seq_no: u32,
 
-    /// The current local sequence number.
-    local_seq_no: u32,
+    /// The highest sent-out local sequence number.
+    ///
+    /// I. e., this is the sequence number that was last sent, not the one we
+    /// send next.
+    highest_sent_local_seq_no: u32,
 
     /// The list of sequence numbers of segments that could not be
     /// received properly.
@@ -166,7 +169,7 @@ impl SutpStream {
         Self {
             compression_algorithm: compression_alg,
             highest_consecutive_remote_seq_no: remote_seq_no,
-            local_seq_no,
+            highest_sent_local_seq_no: local_seq_no,
             nak_set: BTreeSet::new(),
             on_shutdown,
             order_buf: Window::with_lowest_key(
@@ -217,8 +220,9 @@ impl SutpStream {
     /// Gets a fresh sequence number by first incrementing the stored one and
     /// returning the incremented value.
     fn get_seq_no(&mut self) -> u32 {
-        self.local_seq_no = self.local_seq_no.wrapping_add(1);
-        self.local_seq_no
+        self.highest_sent_local_seq_no =
+            self.highest_sent_local_seq_no.wrapping_add(1);
+        self.highest_sent_local_seq_no
     }
 
     /// Asynchronously tries to read data off the stream.
